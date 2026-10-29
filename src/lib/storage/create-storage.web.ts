@@ -1,4 +1,4 @@
-import { StorageUnavailableError, type KeyValueStorage } from '@/lib/storage/storage';
+import { StorageUnavailableError, type KeyValueStorage } from './key-value-storage';
 
 export function createStorage(): KeyValueStorage {
   if (typeof localStorage === 'undefined') {

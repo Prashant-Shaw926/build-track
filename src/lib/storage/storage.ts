@@ -1,20 +1,7 @@
 import { createStorage } from './create-storage';
+import { type KeyValueStorage, StorageUnavailableError } from './key-value-storage';
 
-export interface KeyValueStorage {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
-}
-
-export class StorageUnavailableError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message);
-    this.name = 'StorageUnavailableError';
-    if (options?.cause !== undefined) {
-      this.cause = options.cause;
-    }
-  }
-}
+export { StorageUnavailableError, type KeyValueStorage };
 
 let instance: KeyValueStorage | null = null;
 

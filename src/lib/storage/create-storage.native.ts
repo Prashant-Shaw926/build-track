@@ -1,6 +1,6 @@
 import { createMMKV } from 'react-native-mmkv';
 
-import { StorageUnavailableError, type KeyValueStorage } from '@/lib/storage/storage';
+import { StorageUnavailableError, type KeyValueStorage } from './key-value-storage';
 
 const STORAGE_ID = 'build-track';
 
