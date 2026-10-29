@@ -1,7 +1,6 @@
 import type { NormalizedTransaction } from '@/features/transactions/types/normalized-transaction.types';
 import type { NormalizationResult } from '@/features/transactions/types/normalized-transaction.types';
-import type { MonthlySummaryResponse } from '@/features/transactions/types/summary.types';
-import { buildTrackMonth } from '@/features/transactions/utils/track-month';
+import { buildTrackMonth, formatTransactionTimestamp } from '@/features/transactions/utils/track-month';
 
 function transaction(id: string, occurredAt: string, amountMinor = 100): NormalizedTransaction {
   return {
@@ -25,14 +24,6 @@ function transaction(id: string, occurredAt: string, amountMinor = 100): Normali
   };
 }
 
-const summary: MonthlySummaryResponse = {
-  computed_at: '2026-10-10T18:00:00Z',
-  months: {
-    '2026-09': { spend: '289134.67', income: '295410.10', count: 2 },
-    '2026-10': { spend: '104824.31', income: '27333.00', count: 2 },
-  },
-};
-
 describe('track month view', () => {
   const results: NormalizationResult[] = [
     { ok: true, transaction: transaction('newest', '2026-10-10T17:03:00Z', 34900) },
@@ -40,32 +31,38 @@ describe('track month view', () => {
     { ok: false, id: 'broken', index: 2, reason: 'invalid_amount' },
     { ok: true, transaction: transaction('older', '2026-09-12T04:30:00Z') },
     { ok: true, transaction: { ...transaction('legacy', '2026-10-01T00:00:00Z', 51649), source: 'legacy', currency: null, inrAmountMinor: null, category: null } },
+    {
+      ok: true,
+      transaction: {
+        ...transaction('transfer', '2026-10-02T00:00:00Z', 2500000),
+        direction: 'credit',
+        category: 'TRANSFER',
+        counterparty: { type: 'OWN_ACCOUNT', accountId: 'acc_9075' },
+      },
+    },
   ];
 
-  it('keeps summary strings, order, and failures without calculating totals', () => {
+  it('calculates the month from its transactions and leaves an own-account transfer out of the totals', () => {
     const view = buildTrackMonth({
-      summary,
       results,
       accounts: undefined,
       selectedMonth: null,
     });
 
     expect(view.selectedMonth).toBe('2026-10');
-    expect(view.income).toBe('27,333.00');
-    expect(view.spend).toBe('104,824.31');
-    expect(summary.months['2026-10']?.income).toBe('27333.00');
-    expect(summary.months['2026-10']?.spend).toBe('104824.31');
+    expect(view.income).toBe('0.00');
+    expect(view.spend).toBe('875.49');
     expect(view.income).not.toContain('₹');
-    expect(view.transactions.map((item) => item.id)).toEqual(['newest', 'middle', 'legacy']);
+    expect(view.transactions.map((item) => item.id)).toEqual(['newest', 'middle', 'legacy', 'transfer']);
     expect(view.transactions[0]?.amountPrimary).toBe('₹349.00');
-    expect(view.transactions[2]?.amountPrimary).toBe('516.49 · Currency unavailable');
+    expect(view.transactions[2]?.amountPrimary).toBe('₹516.49');
     expect(view.transactions[2]?.categoryLabel).toBe('No category');
+    expect(view.monthTransactions.map((item) => item.id)).toContain('transfer');
     expect(view.failures).toEqual([{ id: 'broken', index: 2, reason: 'invalid_amount' }]);
   });
 
-  it('uses transaction months when the summary is unavailable and still omits calculated totals', () => {
+  it('uses India calendar months from the transactions', () => {
     const view = buildTrackMonth({
-      summary: undefined,
       results,
       accounts: undefined,
       selectedMonth: '2026-09',
@@ -73,9 +70,23 @@ describe('track month view', () => {
 
     expect(view.months).toEqual(['2026-09', '2026-10']);
     expect(view.selectedMonth).toBe('2026-09');
-    expect(view.income).toBeNull();
-    expect(view.spend).toBeNull();
+    expect(view.income).toBe('0.00');
+    expect(view.spend).toBe('1.00');
     expect(view.transactions.map((item) => item.id)).toEqual(['older']);
     expect(view.failures).toHaveLength(1);
+  });
+
+  it('places a late UTC timestamp on the India calendar date', () => {
+    const late = transaction('late', '2026-08-31T21:00:00Z', 5000);
+    const view = buildTrackMonth({
+      results: [{ ok: true, transaction: late }],
+      accounts: undefined,
+      selectedMonth: null,
+    });
+
+    expect(view.selectedMonth).toBe('2026-09');
+    expect(view.transactions[0]?.dateLabel).toBe('1 Sep 2026');
+    expect(view.spend).toBe('50.00');
+    expect(formatTransactionTimestamp('2026-08-31T21:00:00Z')).toBe('1 Sep 2026, 02:30');
   });
 });

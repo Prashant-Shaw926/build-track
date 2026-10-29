@@ -1,8 +1,9 @@
 import type { Account } from '@/features/transactions/types/account.types';
 import type { NormalizedTransaction } from '@/features/transactions/types/normalized-transaction.types';
 import type { NormalizationResult } from '@/features/transactions/types/normalized-transaction.types';
-import type { MonthlySummaryResponse } from '@/features/transactions/types/summary.types';
-import { formatSummaryAmount, formatTransactionAmount } from '@/features/transactions/utils/format-amount';
+import { formatTransactionAmount } from '@/features/transactions/utils/format-amount';
+import { displayMerchantName } from '@/features/transactions/utils/display-merchant-name';
+import { formatMonthTotals, indiaDateParts, indiaMonthKey } from '@/features/transactions/utils/month-totals';
 
 const MONTH_KEY = /^(\d{4})-(\d{2})$/;
 
@@ -46,6 +47,7 @@ export interface TrackMonthView {
   income: string | null;
   spend: string | null;
   transactions: TrackTransactionRow[];
+  monthTransactions: NormalizedTransaction[];
   failures: TrackFailure[];
 }
 
@@ -74,21 +76,28 @@ export function formatMonthLabel(month: string): string {
 }
 
 export function formatTransactionDate(occurredAt: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(occurredAt);
+  const parts = indiaDateParts(Date.parse(occurredAt));
 
-  if (match === null) {
+  if (parts === null) {
     return occurredAt;
   }
 
-  return `${Number(match[3])} ${formatMonthLabel(`${match[1]}-${match[2]}`)}`;
+  const monthKey = `${parts.year}-${String(parts.month).padStart(2, '0')}`;
+
+  return `${parts.day} ${formatMonthLabel(monthKey)}`;
 }
 
-function summaryMonths(summary: MonthlySummaryResponse | undefined): string[] {
-  if (summary === undefined) {
-    return [];
+export function formatTransactionTimestamp(occurredAt: string): string {
+  const parts = indiaDateParts(Date.parse(occurredAt));
+
+  if (parts === null) {
+    return occurredAt;
   }
 
-  return Object.keys(summary.months).filter(isMonthKey).sort();
+  const hours = String(parts.hours).padStart(2, '0');
+  const minutes = String(parts.minutes).padStart(2, '0');
+
+  return `${formatTransactionDate(occurredAt)}, ${hours}:${minutes}`;
 }
 
 function transactionMonths(results: readonly NormalizationResult[]): string[] {
@@ -99,9 +108,9 @@ function transactionMonths(results: readonly NormalizationResult[]): string[] {
       continue;
     }
 
-    const month = result.transaction.occurredAt.slice(0, 7);
+    const month = indiaMonthKey(result.transaction.occurredAtMs);
 
-    if (isMonthKey(month)) {
+    if (month !== null && isMonthKey(month)) {
       months.add(month);
     }
   }
@@ -137,12 +146,19 @@ function accountLabel(transaction: NormalizedTransaction, accounts: readonly Acc
   return null;
 }
 
+export function toTrackTransactionRows(
+  transactions: readonly NormalizedTransaction[],
+  accounts: readonly Account[] | undefined,
+): TrackTransactionRow[] {
+  return transactions.map((transaction) => toRow(transaction, accounts));
+}
+
 function toRow(transaction: NormalizedTransaction, accounts: readonly Account[] | undefined): TrackTransactionRow {
   const amount = formatTransactionAmount(transaction);
 
   return {
     id: transaction.id,
-    merchant: transaction.merchant,
+    merchant: displayMerchantName(transaction.merchant),
     categoryLabel: transaction.category ?? 'No category',
     dateLabel: formatTransactionDate(transaction.occurredAt),
     directionLabel: transaction.direction === 'debit' ? 'Debit' : 'Credit',
@@ -154,16 +170,13 @@ function toRow(transaction: NormalizedTransaction, accounts: readonly Account[] 
 }
 
 export function buildTrackMonth(input: {
-  summary: MonthlySummaryResponse | undefined;
   results: readonly NormalizationResult[];
   accounts: readonly Account[] | undefined;
   selectedMonth: string | null;
 }): TrackMonthView {
-  const fromSummary = summaryMonths(input.summary);
-  const months = fromSummary.length > 0 ? fromSummary : transactionMonths(input.results);
+  const months = transactionMonths(input.results);
   const selectedMonth = resolveSelectedMonth(months, input.selectedMonth);
-  const monthSummary = selectedMonth === null ? undefined : input.summary?.months[selectedMonth];
-  const transactions: TrackTransactionRow[] = [];
+  const monthTransactions: NormalizedTransaction[] = [];
   const failures: TrackFailure[] = [];
 
   for (const result of input.results) {
@@ -172,18 +185,23 @@ export function buildTrackMonth(input: {
       continue;
     }
 
-    if (selectedMonth !== null && result.transaction.occurredAt.slice(0, 7) === selectedMonth) {
-      transactions.push(toRow(result.transaction, input.accounts));
+    const month = indiaMonthKey(result.transaction.occurredAtMs);
+
+    if (selectedMonth !== null && month === selectedMonth) {
+      monthTransactions.push(result.transaction);
     }
   }
+
+  const totals = selectedMonth === null ? null : formatMonthTotals(monthTransactions);
 
   return {
     months,
     selectedMonth,
     monthLabel: selectedMonth === null ? null : formatMonthLabel(selectedMonth),
-    income: monthSummary === undefined ? null : formatSummaryAmount(monthSummary.income),
-    spend: monthSummary === undefined ? null : formatSummaryAmount(monthSummary.spend),
-    transactions,
+    income: totals === null ? null : totals.income,
+    spend: totals === null ? null : totals.spend,
+    transactions: toTrackTransactionRows(monthTransactions, input.accounts),
+    monthTransactions,
     failures,
   };
 }

@@ -1,4 +1,4 @@
-function groupWhole(whole: string): string {
+function groupWestern(whole: string): string {
   let grouped = '';
 
   for (let index = 0; index < whole.length; index += 1) {
@@ -14,6 +14,24 @@ function groupWhole(whole: string): string {
   return grouped;
 }
 
+function groupIndian(whole: string): string {
+  if (whole.length <= 3) {
+    return whole;
+  }
+
+  const tail = whole.slice(-3);
+  const head = whole.slice(0, -3);
+  let groupedHead = '';
+
+  for (let index = head.length; index > 0; index -= 2) {
+    const start = Math.max(0, index - 2);
+    const part = head.slice(start, index);
+    groupedHead = groupedHead.length === 0 ? part : `${part},${groupedHead}`;
+  }
+
+  return `${groupedHead},${tail}`;
+}
+
 export function formatGroupedDecimal(value: string): string {
   const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value);
 
@@ -21,7 +39,7 @@ export function formatGroupedDecimal(value: string): string {
     return value;
   }
 
-  const whole = groupWhole(match[2]);
+  const whole = groupWestern(match[2]);
   const fraction = match[3];
 
   if (fraction === undefined) {
@@ -31,14 +49,29 @@ export function formatGroupedDecimal(value: string): string {
   return `${match[1]}${whole}.${fraction}`;
 }
 
-export function formatMinorUnits(amountMinor: number): string {
+function formatMinorUnits(amountMinor: number, grouping: 'western' | 'indian'): string | null {
+  if (!Number.isFinite(amountMinor)) {
+    return null;
+  }
+
   const negative = amountMinor < 0;
-  const absolute = negative ? -amountMinor : amountMinor;
+  const absolute = Math.trunc(Math.abs(amountMinor));
   const whole = Math.trunc(absolute / 100);
   const fraction = String(absolute % 100).padStart(2, '0');
-  const text = `${formatGroupedDecimal(String(whole))}.${fraction}`;
+  const grouped = grouping === 'indian' ? groupIndian(String(whole)) : groupWestern(String(whole));
+  const text = `${grouped}.${fraction}`;
 
   return negative ? `-${text}` : text;
+}
+
+function currencyCode(currency: string | null): string | null {
+  if (typeof currency !== 'string') {
+    return null;
+  }
+
+  const code = currency.trim();
+
+  return code.length === 0 ? null : code;
 }
 
 export function formatSummaryAmount(value: string): string {
@@ -50,30 +83,36 @@ export interface TransactionAmountText {
   secondary: string | null;
 }
 
+function rupeeSecondary(inrAmountMinor: number | null): string | null {
+  if (inrAmountMinor === null) {
+    return null;
+  }
+
+  const amount = formatMinorUnits(inrAmountMinor, 'indian');
+
+  return amount === null ? null : `₹${amount}`;
+}
+
 export function formatTransactionAmount(input: {
   amountMinor: number;
   currency: string | null;
   inrAmountMinor: number | null;
 }): TransactionAmountText {
-  const amount = formatMinorUnits(input.amountMinor);
+  const code = currencyCode(input.currency);
+  const western = formatMinorUnits(input.amountMinor, 'western');
+  const indian = formatMinorUnits(input.amountMinor, 'indian');
 
-  if (input.currency === null) {
-    return { primary: `${amount} · Currency unavailable`, secondary: null };
+  if (western === null || indian === null) {
+    return { primary: 'Amount unavailable', secondary: null };
   }
 
-  if (input.currency === 'INR') {
-    return { primary: `₹${amount}`, secondary: null };
+  if (code === null || code === 'INR') {
+    return { primary: `₹${indian}`, secondary: null };
   }
 
-  if (input.currency === 'USD') {
-    return {
-      primary: `USD ${amount}`,
-      secondary: input.inrAmountMinor === null ? null : `₹${formatMinorUnits(input.inrAmountMinor)}`,
-    };
+  if (code === 'USD') {
+    return { primary: `$${western}`, secondary: rupeeSecondary(input.inrAmountMinor) };
   }
 
-  return {
-    primary: `${input.currency} ${amount}`,
-    secondary: input.inrAmountMinor === null ? null : `₹${formatMinorUnits(input.inrAmountMinor)}`,
-  };
+  return { primary: `${code} ${western}`, secondary: rupeeSecondary(input.inrAmountMinor) };
 }

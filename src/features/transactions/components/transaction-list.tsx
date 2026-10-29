@@ -1,7 +1,8 @@
-import { FlatList, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { TrackStatus } from '@/features/transactions/components/track-status';
+import { useTheme } from '@/hooks/use-theme';
 import type { TrackQueryStatus } from '@/features/transactions/hooks/use-track-data';
 import type { TrackTransactionRow } from '@/features/transactions/utils/track-month';
 import { Spacing } from '@/constants/theme';
@@ -11,10 +12,28 @@ interface TransactionListProps {
   transactions: readonly TrackTransactionRow[];
   errorMessage: string;
   bottomInset: number;
+  emptyTitle: string;
   onRetry: () => void;
+  onSelect: (id: string) => void;
+  updating: boolean;
+  refreshing: boolean;
+  onRefresh: () => void;
 }
 
-export function TransactionList({ status, transactions, errorMessage, bottomInset, onRetry }: TransactionListProps) {
+export function TransactionList({
+  status,
+  transactions,
+  errorMessage,
+  bottomInset,
+  emptyTitle,
+  onRetry,
+  onSelect,
+  updating,
+  refreshing,
+  onRefresh,
+}: TransactionListProps) {
+  const theme = useTheme();
+
   if (status === 'loading') {
     return <TrackStatus title="Loading transactions" />;
   }
@@ -25,17 +44,35 @@ export function TransactionList({ status, transactions, errorMessage, bottomInse
     );
   }
 
+  const updatingHeader = updating ? (
+    <View style={styles.updating}>
+      <ActivityIndicator color={theme.text} />
+    </View>
+  ) : undefined;
+
   return (
     <FlatList
       style={styles.listView}
       data={transactions}
       keyExtractor={(item) => item.id}
+      refreshControl={
+        <RefreshControl colors={[theme.text]} onRefresh={onRefresh} refreshing={refreshing} tintColor={theme.text} />
+      }
       contentContainerStyle={[styles.list, { paddingBottom: bottomInset + Spacing.four }, transactions.length === 0 ? styles.emptyList : null]}
-      ListEmptyComponent={<TrackStatus title="No transactions in this month" />}
+      ListHeaderComponent={updatingHeader}
+      ListEmptyComponent={<TrackStatus title={emptyTitle} />}
       renderItem={({ item }) => (
-        <View style={styles.row}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={item.merchant}
+          onPress={() => onSelect(item.id)}
+          style={styles.row}>
           <View style={styles.copy}>
-            <ThemedText type="smallBold">{item.merchant}</ThemedText>
+            <View style={styles.merchantSlot}>
+              <ThemedText type="smallBold" numberOfLines={1} ellipsizeMode="tail">
+                {item.merchant}
+              </ThemedText>
+            </View>
             <ThemedText type="small" themeColor="textSecondary">
               {item.categoryLabel}
             </ThemedText>
@@ -54,7 +91,7 @@ export function TransactionList({ status, transactions, errorMessage, bottomInse
               </ThemedText>
             )}
           </View>
-        </View>
+        </Pressable>
       )}
     />
   );
@@ -64,6 +101,10 @@ const styles = StyleSheet.create({
   listView: {
     flex: 1,
   },
+  updating: {
+    alignItems: 'center',
+    paddingVertical: Spacing.two,
+  },
   list: {
     paddingTop: Spacing.two,
   },
@@ -71,19 +112,24 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   row: {
+    alignItems: 'flex-start',
     flexDirection: 'row',
     gap: Spacing.three,
-    justifyContent: 'space-between',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
   },
   copy: {
     flex: 1,
     gap: Spacing.half,
+    minWidth: 0,
+  },
+  merchantSlot: {
+    alignSelf: 'stretch',
+    maxWidth: '85%',
   },
   amount: {
     alignItems: 'flex-end',
+    flexShrink: 0,
     gap: Spacing.half,
-    maxWidth: '46%',
   },
 });

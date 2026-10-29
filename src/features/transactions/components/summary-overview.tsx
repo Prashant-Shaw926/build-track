@@ -33,13 +33,13 @@ export function SummaryOverview({ status, income, spend, errorMessage, onRetry }
         <ThemedText type="small" themeColor="textSecondary">
           Income
         </ThemedText>
-        <ThemedText type="default">{income}</ThemedText>
+        <ThemedText type="default">{`₹${income}`}</ThemedText>
       </ThemedView>
       <ThemedView type="backgroundElement" style={styles.card}>
         <ThemedText type="small" themeColor="textSecondary">
           Spent
         </ThemedText>
-        <ThemedText type="default">{spend}</ThemedText>
+        <ThemedText type="default">{`₹${spend}`}</ThemedText>
       </ThemedView>
     </View>
   );

@@ -4,6 +4,8 @@ import {
   TRANSACTION_PAGE_LIMIT,
   fetchAllTransactions,
   fetchTransactionsPage,
+  loadTransactionSnapshot,
+  type TransactionSnapshot,
 } from '@/features/transactions/api/transactions.api';
 import type { Transaction, TransactionPage } from '@/features/transactions/types/transaction.types';
 import { ApiError, apiClient } from '@/lib/api/client';
@@ -171,5 +173,143 @@ describe('transactions api', () => {
       isNetworkError: false,
     });
     expect(calls).toBe(2);
+  });
+});
+
+describe('transaction sync', () => {
+  const originalAdapter = apiClient.defaults.adapter;
+  const originalBaseURL = apiClient.defaults.baseURL;
+
+  beforeEach(() => {
+    apiClient.defaults.baseURL = TEST_BASE_URL;
+  });
+
+  afterEach(() => {
+    apiClient.defaults.adapter = originalAdapter;
+    apiClient.defaults.baseURL = originalBaseURL;
+  });
+
+  function snapshot(syncToken: string): TransactionSnapshot {
+    return {
+      items: [transaction('A', '2026-10-10T17:00:00Z')],
+      syncToken,
+      changesSynced: true,
+      changesErrorMessage: null,
+    };
+  }
+
+  it('retries a changes 503 without downloading the history again', async () => {
+    let listCalls = 0;
+    let changesCalls = 0;
+
+    apiClient.defaults.adapter = (config) => {
+      const url = config.url ?? '';
+
+      if (url.includes('/changes')) {
+        changesCalls += 1;
+
+        if (changesCalls === 1) {
+          return Promise.reject(httpError(503, { error: 'unavailable' }, 'Request failed with status code 503'));
+        }
+
+        return jsonResponse(config, {
+          items: [{ ...transaction('B', '2026-10-11T00:00:00Z'), updated_at: '2026-10-11T01:00:00Z' }],
+          next_cursor: null,
+          sync_token: 'st_after',
+        });
+      }
+
+      listCalls += 1;
+
+      return jsonResponse(config, {
+        items: [transaction('A', '2026-10-10T17:00:00Z')],
+        next_cursor: null,
+        sync_token: 'st_full',
+      });
+    };
+
+    const loaded = await loadTransactionSnapshot(null);
+
+    expect(listCalls).toBe(1);
+    expect(changesCalls).toBe(2);
+    expect(loaded.syncToken).toBe('st_after');
+    expect(loaded.changesSynced).toBe(true);
+    expect(loaded.items.map((item) => item.id)).toEqual(['B', 'A']);
+  });
+
+  it('keeps the full list and its token when the first changes request fails', async () => {
+    apiClient.defaults.adapter = (config) => {
+      const url = config.url ?? '';
+
+      if (url.includes('/changes')) {
+        return Promise.reject(httpError(500, { error: 'internal_error' }, 'Request failed with status code 500'));
+      }
+
+      return jsonResponse(config, {
+        items: [transaction('A', '2026-10-10T17:00:00Z')],
+        next_cursor: null,
+        sync_token: 'st_full',
+      });
+    };
+
+    const loaded = await loadTransactionSnapshot(null);
+
+    expect(loaded.items.map((item) => item.id)).toEqual(['A']);
+    expect(loaded.syncToken).toBe('st_full');
+    expect(loaded.changesSynced).toBe(false);
+    expect(loaded.changesErrorMessage).toBe('Request failed with status code 500');
+  });
+
+  it('keeps the previous snapshot when a later changes request fails', async () => {
+    const previous = snapshot('st_full');
+    let calls = 0;
+
+    apiClient.defaults.adapter = () => {
+      calls += 1;
+      return Promise.reject(new AxiosError('Network Error'));
+    };
+
+    await expect(loadTransactionSnapshot(previous)).rejects.toMatchObject({
+      isNetworkError: true,
+    });
+    expect(calls).toBe(1);
+    expect(previous.items.map((item) => item.id)).toEqual(['A']);
+    expect(previous.syncToken).toBe('st_full');
+  });
+
+  it('starts a full sync when the saved token is expired and only then replaces the rows', async () => {
+    const calls: string[] = [];
+    const previous = snapshot('st_old');
+
+    apiClient.defaults.adapter = (config) => {
+      const url = config.url ?? '';
+      const params = config.params as { since?: string } | undefined;
+
+      if (url.includes('/changes')) {
+        calls.push(`changes:${params?.since ?? ''}`);
+
+        if (params?.since === 'st_old') {
+          return Promise.reject(httpError(410, { error: 'sync_token_expired' }, 'Request failed with status code 410'));
+        }
+
+        return jsonResponse(config, { items: [], next_cursor: null, sync_token: 'st_after' });
+      }
+
+      calls.push('list');
+
+      return jsonResponse(config, {
+        items: [transaction('B', '2026-10-12T00:00:00Z')],
+        next_cursor: null,
+        sync_token: 'st_full',
+      } satisfies TransactionPage);
+    };
+
+    const loaded = await loadTransactionSnapshot(previous);
+
+    expect(calls).toEqual(['changes:st_old', 'list', 'changes:st_full']);
+    expect(previous.items.map((item) => item.id)).toEqual(['A']);
+    expect(loaded.items.map((item) => item.id)).toEqual(['B']);
+    expect(loaded.syncToken).toBe('st_after');
+    expect(loaded.changesSynced).toBe(true);
   });
 });

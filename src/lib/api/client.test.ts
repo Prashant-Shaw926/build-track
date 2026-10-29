@@ -1,6 +1,6 @@
 import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 
-import { API_TIMEOUT_MS, ApiError, apiClient, toApiError } from '@/lib/api/client';
+import { API_TIMEOUT_MS, ApiError, NETWORK_ERROR_MESSAGE, REFRESH_NETWORK_MESSAGE, apiClient, apiErrorMessage, toApiError } from '@/lib/api/client';
 
 function httpError(status: number, data: unknown, message: string): AxiosError {
   const config = { headers: {} } as InternalAxiosRequestConfig;
@@ -51,6 +51,14 @@ describe('api client', () => {
     expect(error.message).toBe('Request failed');
     expect(error.status).toBe(500);
     expect(error.isNetworkError).toBe(false);
+  });
+
+  it('describes a missing network differently for refresh and other requests', () => {
+    const error = new AxiosError('Network Error');
+
+    expect(apiErrorMessage(error)).toBe(NETWORK_ERROR_MESSAGE);
+    expect(apiErrorMessage(error, 'refresh')).toBe(REFRESH_NETWORK_MESSAGE);
+    expect(apiErrorMessage(httpError(500, { message: 'missing' }, 'Request failed'))).toBe('missing');
   });
 
   it('rejects requests through the response interceptor', async () => {
