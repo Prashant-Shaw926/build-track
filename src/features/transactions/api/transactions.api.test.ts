@@ -114,7 +114,7 @@ describe('transactions api', () => {
     expect(requests).toEqual([{ limit: TRANSACTION_PAGE_LIMIT }, { limit: TRANSACTION_PAGE_LIMIT, cursor: 'cursor-2' }]);
     expect(items.map((item) => item.id)).toEqual(['A', 'B', 'C', 'D', 'E']);
     expect(items.filter((item) => item.id === 'C')).toHaveLength(1);
-    expect(items.map((item) => item.occurred_at)).toEqual([
+    expect(items.map((item) => ('occurred_at' in item ? item.occurred_at : null))).toEqual([
       '2026-10-10T17:00:00Z',
       '2026-10-10T16:00:00Z',
       '2026-10-10T15:00:00Z',

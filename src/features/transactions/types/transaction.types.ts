@@ -6,6 +6,11 @@ export interface TransactionFx {
   inr_minor: number;
 }
 
+export interface TransactionCounterparty {
+  type: string;
+  account_id: string;
+}
+
 export interface Transaction {
   id: string;
   account_id: string;
@@ -18,10 +23,27 @@ export interface Transaction {
   status: TransactionStatus;
   updated_at: string;
   fx?: TransactionFx;
+  counterparty?: TransactionCounterparty;
 }
 
+export type LegacyTransactionType = 'DR' | 'CR';
+
+export interface LegacyTransaction {
+  id: string;
+  account: string;
+  txn_time: number;
+  amount: string;
+  type: LegacyTransactionType;
+  merchant_name: string;
+  category: string | null;
+  status: TransactionStatus;
+  linked_account?: string;
+}
+
+export type ApiTransaction = Transaction | LegacyTransaction;
+
 export interface TransactionPage {
-  items: Transaction[];
+  items: ApiTransaction[];
   next_cursor: string | null;
   sync_token: string;
 }

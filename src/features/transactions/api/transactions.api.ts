@@ -1,6 +1,6 @@
 import { ApiError, apiClient } from '@/lib/api/client';
 import type {
-  Transaction,
+  ApiTransaction,
   TransactionPage,
   TransactionPageParams,
 } from '@/features/transactions/types/transaction.types';
@@ -33,12 +33,12 @@ export async function fetchTransactionsPage(
   return response.data;
 }
 
-export async function fetchAllTransactions(): Promise<Transaction[]> {
+export async function fetchAllTransactions(): Promise<ApiTransaction[]> {
   requireApiUrl();
 
   const seenCursors = new Set<string>();
   const seenIds = new Set<string>();
-  const items: Transaction[] = [];
+  const items: ApiTransaction[] = [];
   let cursor: string | null = null;
 
   for (;;) {
