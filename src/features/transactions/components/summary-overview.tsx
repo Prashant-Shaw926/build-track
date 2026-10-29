@@ -33,13 +33,13 @@ export function SummaryOverview({ status, income, spend, errorMessage, onRetry }
         <ThemedText type="small" themeColor="textSecondary">
           Income
         </ThemedText>
-        <ThemedText type="default">{`₹${income}`}</ThemedText>
+        <ThemedText style={styles.amount} themeColor="income">{`₹${income}`}</ThemedText>
       </ThemedView>
       <ThemedView type="backgroundElement" style={styles.card}>
         <ThemedText type="small" themeColor="textSecondary">
           Spent
         </ThemedText>
-        <ThemedText type="default">{`₹${spend}`}</ThemedText>
+        <ThemedText style={styles.amount} themeColor="spend">{`₹${spend}`}</ThemedText>
       </ThemedView>
     </View>
   );
@@ -56,5 +56,10 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     padding: Spacing.three,
     borderRadius: Spacing.two,
+  },
+  amount: {
+    fontSize: 22,
+    fontWeight: 600,
+    lineHeight: 28,
   },
 });

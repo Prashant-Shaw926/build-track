@@ -66,7 +66,7 @@ export function TransactionList({
           accessibilityRole="button"
           accessibilityLabel={item.merchant}
           onPress={() => onSelect(item.id)}
-          style={styles.row}>
+          style={[styles.row, { borderBottomColor: theme.backgroundSelected }]}>
           <View style={styles.copy}>
             <View style={styles.merchantSlot}>
               <ThemedText type="smallBold" numberOfLines={1} ellipsizeMode="tail">
@@ -83,8 +83,15 @@ export function TransactionList({
             </ThemedText>
           </View>
           <View style={styles.amount}>
-            <ThemedText type="smallBold">{item.directionLabel}</ThemedText>
-            <ThemedText type="small">{item.amountPrimary}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {item.directionLabel}
+            </ThemedText>
+            <ThemedText
+              style={styles.amountValue}
+              themeColor={item.directionLabel === 'Credit' ? 'income' : 'spend'}
+              type="smallBold">
+              {item.amountPrimary}
+            </ThemedText>
             {item.amountSecondary === null ? null : (
               <ThemedText type="small" themeColor="textSecondary">
                 {item.amountSecondary}
@@ -113,10 +120,11 @@ const styles = StyleSheet.create({
   },
   row: {
     alignItems: 'flex-start',
+    borderBottomWidth: 1,
     flexDirection: 'row',
     gap: Spacing.three,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    paddingVertical: Spacing.three,
   },
   copy: {
     flex: 1,
@@ -131,5 +139,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     flexShrink: 0,
     gap: Spacing.half,
+  },
+  amountValue: {
+    fontSize: 16,
+    lineHeight: 22,
   },
 });

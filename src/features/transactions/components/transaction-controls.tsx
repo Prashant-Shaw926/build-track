@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { DirectionFilterControl } from '@/features/transactions/components/direction-filter';
+import { DirectionFilterControl, type DirectionCounts } from '@/features/transactions/components/direction-filter';
 import { OptionSheet } from '@/features/transactions/components/option-sheet';
 import { useTheme } from '@/hooks/use-theme';
 import {
@@ -22,6 +22,7 @@ interface TransactionControlsProps {
   category: CategoryFilter;
   sort: TrackSort;
   direction: DirectionFilter;
+  directionCounts: DirectionCounts;
   choices: readonly CategoryChoice[];
   onQueryChange: (query: string) => void;
   onCategoryChange: (category: CategoryFilter) => void;
@@ -34,6 +35,7 @@ export function TransactionControls({
   category,
   sort,
   direction,
+  directionCounts,
   choices,
   onQueryChange,
   onCategoryChange,
@@ -44,6 +46,9 @@ export function TransactionControls({
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const sortLabel = TRACK_SORT_OPTIONS.find((option) => option.sort === sort)?.label ?? 'Source order';
+  const categoryLabel = categoryFilterLabel(category);
+  const categoryActive = category.type !== 'all';
+  const sortActive = sort !== 'source';
 
   return (
     <View style={styles.wrap}>
@@ -61,34 +66,49 @@ export function TransactionControls({
       <View style={styles.actions}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Filter by category"
+          accessibilityLabel={categoryActive ? `Filters on, ${categoryLabel}` : 'Filters'}
+          accessibilityState={{ selected: categoryActive }}
           onPress={() => setCategoryOpen(true)}
-          style={[styles.action, { backgroundColor: theme.backgroundElement }]}>
-          <ThemedText type="small">{categoryFilterLabel(category)}</ThemedText>
+          style={[styles.action, { backgroundColor: categoryActive ? theme.backgroundActive : theme.backgroundElement }]}>
+          {categoryActive ? <View style={[styles.mark, { backgroundColor: theme.text }]} /> : null}
+          <ThemedText numberOfLines={1} style={styles.actionLabel} type={categoryActive ? 'smallBold' : 'small'}>
+            {categoryActive ? categoryLabel : 'Filters'}
+          </ThemedText>
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Sort transactions"
+          accessibilityLabel={sortActive ? `Sort on, ${sortLabel}` : 'Sort transactions'}
+          accessibilityState={{ selected: sortActive }}
           onPress={() => setSortOpen(true)}
-          style={[styles.action, { backgroundColor: theme.backgroundElement }]}>
-          <ThemedText type="small">{sortLabel}</ThemedText>
+          style={[styles.action, { backgroundColor: sortActive ? theme.backgroundActive : theme.backgroundElement }]}>
+          {sortActive ? <View style={[styles.mark, { backgroundColor: theme.text }]} /> : null}
+          <ThemedText numberOfLines={1} style={styles.actionLabel} type={sortActive ? 'smallBold' : 'small'}>
+            {sortLabel}
+          </ThemedText>
         </Pressable>
       </View>
-      <DirectionFilterControl direction={direction} onChange={onDirectionChange} />
-      <OptionSheet closeLabel="Close categories" onClose={() => setCategoryOpen(false)} open={categoryOpen} title="Category">
+      <DirectionFilterControl counts={directionCounts} direction={direction} onChange={onDirectionChange} />
+      <OptionSheet
+        closeLabel="Close filters"
+        onClose={() => setCategoryOpen(false)}
+        open={categoryOpen}
+        selection={`Selected: ${categoryLabel}`}
+        title="Filters">
         {choices.map((choice) => {
           const selected = categoryFilterKey(choice.filter) === categoryFilterKey(category);
 
           return (
             <Pressable
               accessibilityRole="button"
+              accessibilityState={{ selected }}
               key={categoryFilterKey(choice.filter)}
               onPress={() => {
                 onCategoryChange(choice.filter);
                 setCategoryOpen(false);
               }}
-              style={styles.option}>
+              style={[styles.option, { backgroundColor: selected ? theme.backgroundActive : theme.backgroundElement }]}>
               <ThemedText type={selected ? 'smallBold' : 'small'}>{choice.label}</ThemedText>
+              {selected ? <ThemedText type="smallBold">✓</ThemedText> : null}
             </Pressable>
           );
         })}
@@ -98,19 +118,26 @@ export function TransactionControls({
         note={AMOUNT_SORT_NOTE}
         onClose={() => setSortOpen(false)}
         open={sortOpen}
+        selection={`Selected: ${sortLabel}`}
         title="Sort">
-        {TRACK_SORT_OPTIONS.map((option) => (
-          <Pressable
-            accessibilityRole="button"
-            key={option.sort}
-            onPress={() => {
-              onSortChange(option.sort);
-              setSortOpen(false);
-            }}
-            style={styles.option}>
-            <ThemedText type={option.sort === sort ? 'smallBold' : 'small'}>{option.label}</ThemedText>
-          </Pressable>
-        ))}
+        {TRACK_SORT_OPTIONS.map((option) => {
+          const selected = option.sort === sort;
+
+          return (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              key={option.sort}
+              onPress={() => {
+                onSortChange(option.sort);
+                setSortOpen(false);
+              }}
+              style={[styles.option, { backgroundColor: selected ? theme.backgroundActive : theme.backgroundElement }]}>
+              <ThemedText type={selected ? 'smallBold' : 'small'}>{option.label}</ThemedText>
+              {selected ? <ThemedText type="smallBold">✓</ThemedText> : null}
+            </Pressable>
+          );
+        })}
       </OptionSheet>
     </View>
   );
@@ -137,12 +164,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: Spacing.two,
     flex: 1,
-    minHeight: 44,
+    flexDirection: 'row',
+    gap: Spacing.one,
     justifyContent: 'center',
+    minHeight: 44,
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.two,
   },
+  actionLabel: {
+    flexShrink: 1,
+  },
+  mark: {
+    borderRadius: 4,
+    height: 8,
+    width: 8,
+  },
   option: {
+    alignItems: 'center',
+    borderRadius: Spacing.two,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 44,
+    paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
   },
 });

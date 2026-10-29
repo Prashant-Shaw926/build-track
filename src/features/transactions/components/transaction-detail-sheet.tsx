@@ -1,8 +1,7 @@
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { BottomSheet } from '@/features/transactions/components/bottom-sheet';
 import type { NormalizedTransaction } from '@/features/transactions/types/normalized-transaction.types';
 import { displayMerchantName } from '@/features/transactions/utils/display-merchant-name';
 import { formatTransactionAmount } from '@/features/transactions/utils/format-amount';
@@ -20,14 +19,20 @@ interface DetailLine {
   value: string;
 }
 
+const WIDE_LABELS = new Set(['Transaction ID', 'Counterparty', 'Account ID']);
+
 function formatTimestamp(value: string): string {
   return formatTransactionTimestamp(value);
 }
 
-function detailLines(transaction: NormalizedTransaction, accountLabel: string | null): DetailLine[] {
+function amountText(transaction: NormalizedTransaction): string {
   const amount = formatTransactionAmount(transaction);
+
+  return amount.secondary === null ? amount.primary : `${amount.primary} · ${amount.secondary}`;
+}
+
+function detailLines(transaction: NormalizedTransaction, accountLabel: string | null): DetailLine[] {
   const lines: DetailLine[] = [
-    { label: 'Amount', value: amount.secondary === null ? amount.primary : `${amount.primary} · ${amount.secondary}` },
     { label: 'Direction', value: transaction.direction === 'debit' ? 'Debit' : 'Credit' },
     { label: 'Category', value: transaction.category ?? 'No category' },
     { label: 'Date', value: formatTimestamp(transaction.occurredAt) },
@@ -67,55 +72,81 @@ function detailLines(transaction: NormalizedTransaction, accountLabel: string | 
   return lines;
 }
 
+function isWide(line: DetailLine): boolean {
+  return WIDE_LABELS.has(line.label) || line.value.length > 24;
+}
+
+function groupLines(lines: readonly DetailLine[]): DetailLine[][] {
+  const groups: DetailLine[][] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const current = lines[index];
+    const next = lines[index + 1];
+
+    if (current === undefined) {
+      break;
+    }
+
+    if (next !== undefined && !isWide(current) && !isWide(next)) {
+      groups.push([current, next]);
+      index += 2;
+      continue;
+    }
+
+    groups.push([current]);
+    index += 1;
+  }
+
+  return groups;
+}
+
 export function TransactionDetailSheet({ transaction, accountLabel, onClose }: TransactionDetailSheetProps) {
-  const insets = useSafeAreaInsets();
   const lines = transaction === null ? [] : detailLines(transaction, accountLabel);
+  const groups = groupLines(lines);
 
   return (
-    <Modal animationType="slide" transparent visible={transaction !== null} onRequestClose={onClose}>
-      <View style={styles.modal}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close transaction details" onPress={onClose} style={styles.backdrop} />
-        <ThemedView style={[styles.sheet, { paddingBottom: insets.bottom + Spacing.three }]}>
-          <View style={styles.header}>
-            <ThemedText type="default" style={styles.title}>
-              {transaction === null ? '' : displayMerchantName(transaction.merchant)}
+    <BottomSheet
+      closeLabel="Close transaction details"
+      header={
+        transaction === null ? null : (
+          <View style={styles.headerBlock}>
+            <View style={styles.header}>
+              <ThemedText style={styles.title} type="default">
+                {displayMerchantName(transaction.merchant)}
+              </ThemedText>
+              {/* <Pressable accessibilityLabel="Close" accessibilityRole="button" onPress={onClose} style={styles.close}>
+                <ThemedText type="smallBold">Close</ThemedText>
+              </Pressable> */}
+            </View>
+            <ThemedText themeColor={transaction.direction === 'credit' ? 'income' : 'spend'} type="subtitle">
+              {amountText(transaction)}
             </ThemedText>
-            <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={styles.close}>
-              <ThemedText type="smallBold">Close</ThemedText>
-            </Pressable>
           </View>
-          <ScrollView style={styles.list}>
-            {lines.map((line) => (
-              <View key={line.label} style={styles.line}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {line.label}
-                </ThemedText>
-                <ThemedText type="small">{line.value}</ThemedText>
-              </View>
-            ))}
-          </ScrollView>
-        </ThemedView>
-      </View>
-    </Modal>
+        )
+      }
+      maxHeight="75%"
+      onClose={onClose}
+      visible={transaction !== null}>
+      {groups.map((group) => (
+        <View key={group.map((line) => line.label).join('-')} style={group.length === 2 ? styles.pair : undefined}>
+          {group.map((line) => (
+            <View key={line.label} style={styles.line}>
+              <ThemedText themeColor="textSecondary" type="small">
+                {line.label}
+              </ThemedText>
+              <ThemedText type="small">{line.value}</ThemedText>
+            </View>
+          ))}
+        </View>
+      ))}
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-  },
-  modal: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sheet: {
+  headerBlock: {
     gap: Spacing.two,
-    maxHeight: '75%',
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-    borderTopLeftRadius: Spacing.three,
-    borderTopRightRadius: Spacing.three,
   },
   header: {
     alignItems: 'center',
@@ -127,14 +158,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   close: {
-    minHeight: 44,
     justifyContent: 'center',
+    minHeight: 44,
     paddingHorizontal: Spacing.two,
   },
-  list: {
-    maxHeight: 420,
+  pair: {
+    flexDirection: 'row',
+    gap: Spacing.three,
   },
   line: {
+    flex: 1,
     gap: Spacing.half,
     paddingVertical: Spacing.two,
   },

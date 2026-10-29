@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -11,6 +11,7 @@ import { TransactionControls } from '@/features/transactions/components/transact
 import { TransactionDetailSheet } from '@/features/transactions/components/transaction-detail-sheet';
 import { TransactionList } from '@/features/transactions/components/transaction-list';
 import { useTrackData } from '@/features/transactions/hooks/use-track-data';
+import { applyTrackList } from '@/features/transactions/utils/track-list';
 import { Spacing } from '@/constants/theme';
 
 export function TrackScreen() {
@@ -18,6 +19,26 @@ export function TrackScreen() {
   const [monthsOpen, setMonthsOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const track = useTrackData();
+  const directionCounts = useMemo(() => {
+    const matched = applyTrackList(track.view.monthTransactions, {
+      query: track.query,
+      category: track.category,
+      sort: track.sort,
+      direction: 'all',
+    });
+    let debit = 0;
+    let credit = 0;
+
+    for (const transaction of matched) {
+      if (transaction.direction === 'debit') {
+        debit += 1;
+      } else {
+        credit += 1;
+      }
+    }
+
+    return { all: matched.length, debit, credit };
+  }, [track.category, track.query, track.sort, track.view.monthTransactions]);
   const selectedTransaction =
     selectedId === null ? null : (track.view.monthTransactions.find((item) => item.id === selectedId) ?? null);
   const selectedRow =
@@ -32,32 +53,34 @@ export function TrackScreen() {
   return (
     <ThemedView style={styles.screen}>
       <SafeAreaView edges={['top']} style={styles.screen}>
-        <ThemedText type="subtitle" style={styles.title}>
+        <ThemedText type="subtitle" style={styles.eyebrow}>
           Track
         </ThemedText>
-        {track.lastUpdatedLabel === null ? null : (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.updated}>
-            {track.lastUpdatedLabel}
-          </ThemedText>
-        )}
-        <MonthSelector
-          months={track.view.months}
-          selectedMonth={track.view.selectedMonth}
-          monthLabel={track.view.monthLabel}
-          open={monthsOpen}
-          onOpen={() => setMonthsOpen(true)}
-          onClose={() => setMonthsOpen(false)}
-          onSelect={track.selectMonth}
-          onPrevious={track.showPreviousMonth}
-          onNext={track.showNextMonth}
-        />
-        <SummaryOverview
-          status={track.summaryStatus}
-          income={track.view.income}
-          spend={track.view.spend}
-          errorMessage={track.summaryError}
-          onRetry={track.retrySummary}
-        />
+        <View style={styles.overview}>
+          <MonthSelector
+            months={track.view.months}
+            selectedMonth={track.view.selectedMonth}
+            monthLabel={track.view.monthLabel}
+            open={monthsOpen}
+            onOpen={() => setMonthsOpen(true)}
+            onClose={() => setMonthsOpen(false)}
+            onSelect={track.selectMonth}
+            onPrevious={track.showPreviousMonth}
+            onNext={track.showNextMonth}
+          />
+          {track.lastUpdatedLabel === null ? null : (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.updated}>
+              {track.lastUpdatedLabel}
+            </ThemedText>
+          )}
+          <SummaryOverview
+            status={track.summaryStatus}
+            income={track.view.income}
+            spend={track.view.spend}
+            errorMessage={track.summaryError}
+            onRetry={track.retrySummary}
+          />
+        </View>
         {track.transactionsStatus === 'ready' ? <TrackFailures failures={track.view.failures} /> : null}
         {track.transactionsStatus === 'ready' ? (
           <TransactionControls
@@ -70,6 +93,7 @@ export function TrackScreen() {
             query={track.query}
             sort={track.sort}
             direction={track.direction}
+            directionCounts={directionCounts}
           />
         ) : null}
         {track.notice === null ? null : (
@@ -104,14 +128,16 @@ export function TrackScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+    gap: Spacing.two,
   },
-  title: {
+  eyebrow: {
     paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.two,
+  },
+  overview: {
+    gap: Spacing.three,
   },
   updated: {
     paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.half,
   },
   notice: {
     marginHorizontal: Spacing.three,

@@ -13,14 +13,20 @@ export const Colors = {
     background: '#ffffff',
     backgroundElement: '#F0F0F3',
     backgroundSelected: '#E0E1E6',
+    backgroundActive: '#C8CBD2',
     textSecondary: '#60646C',
+    income: '#0F7B4C',
+    spend: '#9F3A38',
   },
   dark: {
     text: '#ffffff',
     background: '#000000',
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
+    backgroundActive: '#3E4248',
     textSecondary: '#B0B4BA',
+    income: '#7DCEA0',
+    spend: '#F0A8A4',
   },
 } as const;
 

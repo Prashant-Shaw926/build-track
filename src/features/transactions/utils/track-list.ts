@@ -30,7 +30,7 @@ export const TRACK_SORT_OPTIONS: readonly { sort: TrackSort; label: string }[] =
 ];
 
 export const AMOUNT_SORT_NOTE =
-  'Amount order uses the supplied rupee value. Transactions without one stay in their original order.';
+  'Note: Amount order uses the supplied rupee value. Transactions without one stay in their original order.';
 
 interface IndexedTransaction {
   transaction: NormalizedTransaction;
