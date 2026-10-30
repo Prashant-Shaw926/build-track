@@ -78,19 +78,3 @@ These IST-related suites should pass under `America/Los_Angeles` as well as the 
 
 Hook and component tests run in the suite but are **outside** the coverage collect paths above.
 
-## Conventions in this repo
-
-- **Location:** tests sit next to the code as `*.test.ts` / `*.test.tsx` (plus `*.fixture.test.ts` where fixtures are loaded).
-- **Timers:** `use-track-data` debounce tests use `jest.useFakeTimers()` and wrap state updates / `advanceTimersByTime` in `act(...)`, then restore real timers in `afterEach`.
-- **TanStack Query smoke tests:** hook wrappers set `gcTime: 0`, then call `unmount()` and `queryClient.clear()` so Query’s garbage-collection timers do not leave open handles after the suite.
-- **BottomSheet mocks:** `month-selector`, `transaction-controls`, and `transaction-detail-sheet` tests mock `@/features/transactions/components/bottom-sheet` so they assert selection / content without owning Modal / safe-area behavior. The real sheet is covered in `bottom-sheet.test.tsx`.
-
-## Manual Android device checklist
-
-1. Scroll **300+** rows: no blank rows or flicker. If flicker appears, try removing only `removeClippedSubviews` in `transaction-list.tsx` and retest.
-2. Type in search, then quickly tap Income / Expense / another month: the list must match both the query and the new filter (no stale debounce overwrite).
-3. Open the real month, category (Filters), and sort sheets: select an option, dismiss with the **×** close control or the backdrop (there is no drag-to-close).
-4. Open a row’s detail sheet: account nickname is correct; own-account transfers show the self-transfer note.
-5. Pull to refresh; force an error state (for example stop the mock API); use Retry and confirm recovery when the API is back.
-6. Cold start: latest month appears before the full history finishes; switching to an older month that is still loading shows the existing loader until that month is ready. After paging finishes, every month (including the oldest) must show data — not stay on Loading summary/transactions.
-7. While older months are still paging, pull to refresh should clear the list spinner quickly (accounts refresh); it must not sit spinning for the rest of the history download.

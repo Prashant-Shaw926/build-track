@@ -116,11 +116,6 @@ Then open the already-installed development build (not Expo Go).
 
 ## Known limitations
 
-- `BottomSheet` is mocked in `month-selector`, `transaction-controls`, and `transaction-detail-sheet` tests. The shared sheet has its own unit tests in `bottom-sheet.test.tsx`; device checks still cover real Modal / safe-area behavior
-- Coverage figures quoted in the docs cover **utils + api + `src/lib/api` only**, not hooks or components
-- No `getItemLayout` on the transaction `FlatList` because row height is not fixed
-- `useMonthlySummary` and `GET /v1/summary/months` exist and are tested, but Track income / spend cards use local IST totals from synced transactions
 - No ESLint config in the repo
 - `npx expo-doctor` reports `react-native` **0.88.0** vs expected **0.88.1** (left unchanged)
 - Expo Go is not supported; use a development build (`npm run android` / `npm run ios`)
-- Amount sort uses the supplied rupee minor value; rows without one keep source order (see sort-sheet note in the UI)

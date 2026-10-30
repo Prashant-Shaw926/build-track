@@ -57,27 +57,6 @@ Those rows still appear in the list and detail sheet (with a self-transfer note)
 - INR / null currency: primary uses Indian grouping with `₹`. USD uses `$` plus optional `₹` secondary from `inrAmountMinor`. Other codes show `CODE` + western grouping.
 - Month cards and amount sort use the same rupee rule: INR/null → `amountMinor`; otherwise `inrAmountMinor` when present ([`track-list.ts`](../src/features/transactions/utils/track-list.ts) `rupeeMinor`).
 
-## Data flow
-
-```mermaid
-flowchart TD
-  apiClient["apiGet queued client<br/>client.ts"]
-  loadSnap["loadTransactionSnapshot<br/>transactions.api.ts"]
-  accountsApi["fetchAccounts<br/>accounts.api.ts"]
-  query["TanStack Query<br/>query-client.ts + MMKV persist"]
-  useTrack["useTrackData"]
-  screen["TrackScreen"]
-  list["TransactionList + controls + sheets"]
-
-  apiClient --> loadSnap
-  apiClient --> accountsApi
-  loadSnap --> query
-  accountsApi --> query
-  query --> useTrack
-  useTrack --> screen
-  screen --> list
-```
-
 ### API client
 
 [`src/lib/api/client.ts`](../src/lib/api/client.ts):
