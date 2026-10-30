@@ -4,7 +4,7 @@ Expo React Native app for the Track screen: sync bank transactions from a mock A
 
 ## Features
 
-- Full transaction history sync with cursor pagination, then incremental updates via the changes feed
+- Progressive history sync: latest IST month is ready first, remaining months continue in the background, then the changes feed runs
 - Monthly income and spend cards computed locally in IST (`+05:30`), excluding own-account / self-transfers
 - Month picker (previous / next and sheet), merchant search, category filters, sort, and debit / credit direction chips
 - Transaction detail sheet (account nickname, Pending / Settled status, self-transfer note when applicable)

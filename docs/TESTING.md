@@ -70,9 +70,9 @@ These IST-related suites should pass under `America/Los_Angeles` as well as the 
 
 | Area | Test files (co-located) |
 | --- | --- |
-| Utils | `normalize-transaction`, `apply-transaction-changes` (+ fixture/checkpoint), `month-totals`, `track-month`, `track-list`, `format-amount`, `display-merchant-name` |
-| API | `accounts.api`, `transactions.api` (+ fixture), `summary.api`, plus `src/lib/api/client` |
-| Hooks | `use-accounts`, `use-transactions`, `use-monthly-summary`, `use-track-data` (including search debounce / instant filter races) |
+| Utils | `normalize-transaction`, `apply-transaction-changes` (+ fixture/checkpoint), `month-totals`, `track-month`, `track-list`, `format-amount`, `display-merchant-name`, `api-transaction-month` (ready-month rules) |
+| API | `accounts.api`, `transactions.api` (+ fixture, progressive `onProgress` / resume), `summary.api`, plus `src/lib/api/client` |
+| Hooks | `use-accounts`, `use-transactions`, `use-monthly-summary`, `use-track-data` (search debounce / instant filter races, progressive month readiness loaders) |
 | Components | `bottom-sheet`, `month-selector`, `transaction-controls`, `transaction-detail-sheet`, `transaction-list`, `direction-filter`, `summary-overview`, `track-status`, `track-failures` |
 | Other | `query-client`, `storage` |
 
@@ -92,3 +92,4 @@ Hook and component tests run in the suite but are **outside** the coverage colle
 3. Open the real month, category (Filters), and sort sheets: select an option, dismiss with the **×** close control or the backdrop (there is no drag-to-close).
 4. Open a row’s detail sheet: account nickname is correct; own-account transfers show the self-transfer note.
 5. Pull to refresh; force an error state (for example stop the mock API); use Retry and confirm recovery when the API is back.
+6. Cold start: latest month appears before the full history finishes; switching to an older month that is still loading shows the existing loader until that month is ready.

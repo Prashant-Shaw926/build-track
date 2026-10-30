@@ -19,6 +19,9 @@ describe('useTransactions', () => {
       syncToken: 'st_123',
       changesSynced: true,
       changesErrorMessage: null,
+      historyComplete: true,
+      resumeCursor: null,
+      readyMonths: [],
     };
     mockLoadTransactionSnapshot.mockResolvedValueOnce(mockSnapshot);
 

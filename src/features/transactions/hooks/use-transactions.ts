@@ -8,8 +8,13 @@ export function useTransactions() {
     queryKey: transactionQueryKeys.transactions,
     queryFn: ({ client }) => {
       const cached: unknown = client.getQueryData(transactionQueryKeys.transactions);
+      const previous = readTransactionSnapshot(cached);
 
-      return loadTransactionSnapshot(readTransactionSnapshot(cached));
+      return loadTransactionSnapshot(previous, {
+        onProgress: (snapshot) => {
+          client.setQueryData(transactionQueryKeys.transactions, snapshot);
+        },
+      });
     },
   });
 }

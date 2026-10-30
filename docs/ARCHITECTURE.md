@@ -11,13 +11,18 @@ Implemented in [`src/features/transactions/api/transactions.api.ts`](../src/feat
 - Overlapping rows across pages are skipped by **transaction id** (`seenIds`).
 - A cursor that appears twice fails the sync with `ApiError` (`Transaction pagination returned a cursor that was already used.`). The same guard applies when paging the changes feed.
 
-## Full sync, then changes feed, and 410 recovery
+## Progressive full sync, then changes feed, and 410 recovery
 
-Same module: `loadTransactionSnapshot`.
+Same module: `loadTransactionSnapshot`, with month readiness in [`api-transaction-month.ts`](../src/features/transactions/utils/api-transaction-month.ts).
 
-1. **Cold / no token:** page the full list, keep `sync_token`, then request `/v1/transactions/changes?since=<token>`. Merge with [`apply-transaction-changes.ts`](../src/features/transactions/utils/apply-transaction-changes.ts). If changes fail, keep the full list, set `changesSynced: false`, and surface `changesErrorMessage` (or a default notice in the UI).
-2. **Warm / cached token:** request changes only. On success, merge and update the token.
-3. **HTTP 410** on changes: treat the token as expired, run **one** full list resync, then try changes again with the new token. There is no 410 retry loop. If the full list itself fails after a 410, the error propagates and the previous snapshot stays in the Query cache until a successful load.
+The list API is newest-first and has **no month filter**, so “load latest month first” is done by streaming pages and publishing a partial snapshot as soon as the newest IST month is complete (an older month appears, or the history ends).
+
+1. **Cold / incomplete cache:** page `/v1/transactions` with id dedupe. After each page, recompute `readyMonths`. When the latest month becomes ready, `onProgress` writes a partial `TransactionSnapshot` (`historyComplete: false`, `syncToken: null`, `resumeCursor` set) into the Query cache so the UI can render without waiting for the full history. Background paging continues. An incomplete snapshot is resumed from `resumeCursor` on the next load.
+2. **History finished:** set `historyComplete: true`, attach the list `sync_token`, then request `/v1/transactions/changes?since=<token>`. Merge with [`apply-transaction-changes.ts`](../src/features/transactions/utils/apply-transaction-changes.ts). If changes fail, keep the full list, set `changesSynced: false`, and surface `changesErrorMessage`.
+3. **Warm / complete cache with token:** request changes only. On success, merge and update the token.
+4. **HTTP 410** on changes: treat the token as expired, run **one** progressive full resync, then try changes again with the new token. There is no 410 retry loop. If the full list itself fails after a 410, the error propagates and the previous snapshot stays in the Query cache until a successful load.
+
+`readyMonths` rule (newest-first): a month is ready once a strictly older IST month appears in the stream, or when `historyComplete` is true (covers a sole remaining month). Totals and rows for a month are shown only when that month is ready — otherwise the existing summary/list loaders stay up.
 
 Merge rules in `applyTransactionChanges`: a change applies only when `updated_at` is strictly newer than the stored row; newer `deleted: true` removes the id; new ids insert newest-first by occurred time.
 
@@ -90,15 +95,15 @@ flowchart TD
 - `PersistQueryClientProvider` with MMKV sync persister
 - Persist `onError`: log, then `queryPersister.removeClient()` so a corrupt cache does not block a fresh fetch
 
-`useTransactions` passes the cached snapshot into `loadTransactionSnapshot` so refreshes prefer the changes feed.
+`useTransactions` passes the cached snapshot into `loadTransactionSnapshot` with an `onProgress` callback that `setQueryData`s partial snapshots so the latest ready month appears while older months keep downloading. Once `historyComplete` and a `syncToken` exist, refreshes prefer the changes feed.
 
 ### `useTrackData` → UI
 
-[`use-track-data.ts`](../src/features/transactions/hooks/use-track-data.ts) composes `useAccounts` + `useTransactions`, normalizes, builds the month view, and applies list criteria.
+[`use-track-data.ts`](../src/features/transactions/hooks/use-track-data.ts) composes `useAccounts` + `useTransactions`, normalizes, builds the month view, and applies list criteria. If the selected month is not in `readyMonths` (and history is not complete), summary and list use the existing **loading** status and hide partial totals/rows for that month. Switching into a not-yet-ready month keeps that loader up until background paging marks the month ready. Ready months do **not** show the list refresh spinner while background paging continues (`isRefetching` is ignored until `historyComplete`, unless the user pulled to refresh).
 
 [`track-screen.tsx`](../src/features/transactions/components/track-screen.tsx) wires month selector, summary cards, filters, list, and detail sheet.
 
-`useMonthlySummary` / `summary.api.ts` remain in the codebase and are tested, but **Track cards do not call them**; they use IST totals from the synced month set.
+`useMonthlySummary` / `summary.api.ts` remain in the codebase and are tested, but **Track cards do not call them**; they use IST totals from ready months in the synced set.
 
 ## `useTrackData` list updates
 

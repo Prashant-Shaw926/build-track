@@ -1,5 +1,6 @@
 import { ApiError, apiErrorMessage, apiGet, toApiError } from '@/lib/api/client';
 import { applyTransactionChanges } from '@/features/transactions/utils/apply-transaction-changes';
+import { computeReadyMonths } from '@/features/transactions/utils/api-transaction-month';
 import type {
   ApiTransaction,
   TransactionChange,
@@ -19,15 +20,34 @@ export interface TransactionSnapshot {
   syncToken: string | null;
   changesSynced: boolean;
   changesErrorMessage: string | null;
+  historyComplete: boolean;
+  resumeCursor: string | null;
+  readyMonths: string[];
+}
+
+export interface LoadTransactionSnapshotOptions {
+  onProgress?: (snapshot: TransactionSnapshot) => void;
 }
 
 function hasCursor(cursor: string | null | undefined): cursor is string {
   return typeof cursor === 'string' && cursor.length > 0;
 }
 
-export async function fetchTransactionsPage(
-  params: TransactionPageParams,
-): Promise<TransactionPage> {
+function buildSnapshot(input: {
+  items: ApiTransaction[];
+  syncToken: string | null;
+  changesSynced: boolean;
+  changesErrorMessage: string | null;
+  historyComplete: boolean;
+  resumeCursor: string | null;
+}): TransactionSnapshot {
+  return {
+    ...input,
+    readyMonths: computeReadyMonths(input.items, input.historyComplete),
+  };
+}
+
+export function fetchTransactionsPage(params: TransactionPageParams): Promise<TransactionPage> {
   requireApiUrl();
 
   const query: { limit: number; cursor?: string } = { limit: params.limit };
@@ -48,11 +68,44 @@ export async function fetchAllTransactions(): Promise<ApiTransaction[]> {
 export async function fetchAllTransactionsWithToken(): Promise<Pick<TransactionSnapshot, 'items' | 'syncToken'>> {
   requireApiUrl();
 
+  const paged = await pageAllTransactions({ items: [], cursor: null });
+
+  return { items: paged.items, syncToken: paged.listSyncToken };
+}
+
+interface PageAllState {
+  items: ApiTransaction[];
+  cursor: string | null;
+}
+
+interface PageAllResult {
+  items: ApiTransaction[];
+  listSyncToken: string | null;
+}
+
+async function pageAllTransactions(
+  start: PageAllState,
+  onPage?: (state: {
+    items: ApiTransaction[];
+    listSyncToken: string | null;
+    nextCursor: string | null;
+    historyComplete: boolean;
+  }) => void,
+): Promise<PageAllResult> {
   const seenCursors = new Set<string>();
   const seenIds = new Set<string>();
   const items: ApiTransaction[] = [];
-  let cursor: string | null = null;
-  let syncToken: string | null = null;
+  let cursor = start.cursor;
+  let listSyncToken: string | null = null;
+
+  for (const item of start.items) {
+    if (seenIds.has(item.id)) {
+      continue;
+    }
+
+    seenIds.add(item.id);
+    items.push(item);
+  }
 
   for (;;) {
     if (hasCursor(cursor)) {
@@ -67,7 +120,7 @@ export async function fetchAllTransactionsWithToken(): Promise<Pick<TransactionS
       limit: TRANSACTION_PAGE_LIMIT,
       cursor,
     });
-    syncToken = page.sync_token.length > 0 ? page.sync_token : syncToken;
+    listSyncToken = page.sync_token.length > 0 ? page.sync_token : listSyncToken;
 
     for (const item of page.items) {
       if (seenIds.has(item.id)) {
@@ -78,15 +131,113 @@ export async function fetchAllTransactionsWithToken(): Promise<Pick<TransactionS
       items.push(item);
     }
 
-    if (!hasCursor(page.next_cursor)) {
-      return { items, syncToken };
-    }
+    const nextCursor = hasCursor(page.next_cursor) ? page.next_cursor : null;
 
-    if (seenCursors.has(page.next_cursor)) {
+    if (nextCursor !== null && seenCursors.has(nextCursor)) {
       throw new ApiError(REPEATED_CURSOR_MESSAGE, null, false);
     }
 
-    cursor = page.next_cursor;
+    const historyComplete = nextCursor === null;
+
+    onPage?.({
+      items: [...items],
+      listSyncToken,
+      nextCursor,
+      historyComplete,
+    });
+
+    if (historyComplete) {
+      return { items, listSyncToken };
+    }
+
+    cursor = nextCursor;
+  }
+}
+
+async function fetchTransactionsProgressive(
+  previous: TransactionSnapshot | null,
+  onProgress?: (snapshot: TransactionSnapshot) => void,
+): Promise<TransactionSnapshot> {
+  requireApiUrl();
+
+  let publishedReadyMonth = previous !== null && previous.readyMonths.length > 0;
+
+  const paged = await pageAllTransactions(
+    {
+      items: previous !== null && !previous.historyComplete ? previous.items : [],
+      cursor: previous !== null && !previous.historyComplete ? previous.resumeCursor : null,
+    },
+    ({ items, nextCursor, historyComplete }) => {
+      if (historyComplete) {
+        return;
+      }
+
+      const partial = buildSnapshot({
+        items,
+        syncToken: null,
+        changesSynced: false,
+        changesErrorMessage: null,
+        historyComplete: false,
+        resumeCursor: nextCursor,
+      });
+
+      if (partial.readyMonths.length > 0) {
+        publishedReadyMonth = true;
+        onProgress?.(partial);
+      } else if (publishedReadyMonth) {
+        onProgress?.(partial);
+      }
+    },
+  );
+
+  return finalizeFullList(paged.items, paged.listSyncToken, onProgress);
+}
+
+async function finalizeFullList(
+  items: ApiTransaction[],
+  listSyncToken: string | null,
+  onProgress?: (snapshot: TransactionSnapshot) => void,
+): Promise<TransactionSnapshot> {
+  const completeWithoutChanges = buildSnapshot({
+    items,
+    syncToken: listSyncToken,
+    changesSynced: false,
+    changesErrorMessage: null,
+    historyComplete: true,
+    resumeCursor: null,
+  });
+
+  onProgress?.(completeWithoutChanges);
+
+  if (listSyncToken === null || listSyncToken.length === 0) {
+    return completeWithoutChanges;
+  }
+
+  try {
+    const changes = await fetchTransactionChanges(listSyncToken);
+    const merged = buildSnapshot({
+      items: applyTransactionChanges(items, changes.items),
+      syncToken: changes.syncToken,
+      changesSynced: true,
+      changesErrorMessage: null,
+      historyComplete: true,
+      resumeCursor: null,
+    });
+    onProgress?.(merged);
+
+    return merged;
+  } catch (error) {
+    const failedChanges = buildSnapshot({
+      items,
+      syncToken: listSyncToken,
+      changesSynced: false,
+      changesErrorMessage: apiErrorMessage(error),
+      historyComplete: true,
+      resumeCursor: null,
+    });
+    onProgress?.(failedChanges);
+
+    return failedChanges;
   }
 }
 
@@ -133,6 +284,16 @@ export async function fetchTransactionChanges(since: string): Promise<{ items: T
   }
 }
 
+function hasReadyMonths(value: unknown): value is { readyMonths: string[] } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'readyMonths' in value &&
+    Array.isArray(value.readyMonths) &&
+    value.readyMonths.every((month) => typeof month === 'string')
+  );
+}
+
 function isTransactionSnapshot(data: unknown): data is TransactionSnapshot {
   if (typeof data !== 'object' || data === null) {
     return false;
@@ -157,21 +318,51 @@ function isTransactionSnapshot(data: unknown): data is TransactionSnapshot {
   return true;
 }
 
+function migrateSnapshot(data: TransactionSnapshot | Omit<TransactionSnapshot, 'historyComplete' | 'resumeCursor' | 'readyMonths'>): TransactionSnapshot {
+  const historyComplete =
+    'historyComplete' in data && typeof data.historyComplete === 'boolean'
+      ? data.historyComplete
+      : true;
+  const resumeCursor =
+    'resumeCursor' in data && (data.resumeCursor === null || typeof data.resumeCursor === 'string')
+      ? data.resumeCursor
+      : null;
+  const readyMonths = hasReadyMonths(data)
+    ? data.readyMonths
+    : computeReadyMonths(data.items, historyComplete);
+
+  return {
+    items: data.items,
+    syncToken: data.syncToken,
+    changesSynced: data.changesSynced,
+    changesErrorMessage: data.changesErrorMessage,
+    historyComplete,
+    resumeCursor,
+    readyMonths,
+  };
+}
+
 export function readTransactionSnapshot(data: unknown): TransactionSnapshot | null {
   if (data === undefined || data === null) {
     return null;
   }
 
   if (Array.isArray(data)) {
-    return {
+    return buildSnapshot({
       items: data as ApiTransaction[],
       syncToken: null,
       changesSynced: false,
       changesErrorMessage: null,
-    };
+      historyComplete: true,
+      resumeCursor: null,
+    });
   }
 
-  return isTransactionSnapshot(data) ? data : null;
+  if (!isTransactionSnapshot(data)) {
+    return null;
+  }
+
+  return migrateSnapshot(data);
 }
 
 async function applyRemoteChanges(previous: TransactionSnapshot): Promise<TransactionSnapshot> {
@@ -181,16 +372,23 @@ async function applyRemoteChanges(previous: TransactionSnapshot): Promise<Transa
 
   const changes = await fetchTransactionChanges(previous.syncToken);
 
-  return {
+  return buildSnapshot({
     items: applyTransactionChanges(previous.items, changes.items),
     syncToken: changes.syncToken,
     changesSynced: true,
     changesErrorMessage: null,
-  };
+    historyComplete: true,
+    resumeCursor: null,
+  });
 }
 
-export async function loadTransactionSnapshot(previous: TransactionSnapshot | null): Promise<TransactionSnapshot> {
-  if (previous?.syncToken) {
+export async function loadTransactionSnapshot(
+  previous: TransactionSnapshot | null,
+  options: LoadTransactionSnapshotOptions = {},
+): Promise<TransactionSnapshot> {
+  const onProgress = options.onProgress;
+
+  if (previous?.historyComplete && previous.syncToken) {
     try {
       return await applyRemoteChanges(previous);
     } catch (error) {
@@ -202,32 +400,9 @@ export async function loadTransactionSnapshot(previous: TransactionSnapshot | nu
     }
   }
 
-  const full = await fetchAllTransactionsWithToken();
-
-  if (full.syncToken === null || full.syncToken.length === 0) {
-    return {
-      items: full.items,
-      syncToken: full.syncToken,
-      changesSynced: false,
-      changesErrorMessage: null,
-    };
+  if (previous !== null && !previous.historyComplete) {
+    return fetchTransactionsProgressive(previous, onProgress);
   }
 
-  try {
-    const changes = await fetchTransactionChanges(full.syncToken);
-
-    return {
-      items: applyTransactionChanges(full.items, changes.items),
-      syncToken: changes.syncToken,
-      changesSynced: true,
-      changesErrorMessage: null,
-    };
-  } catch (error) {
-    return {
-      items: full.items,
-      syncToken: full.syncToken,
-      changesSynced: false,
-      changesErrorMessage: apiErrorMessage(error),
-    };
-  }
+  return fetchTransactionsProgressive(null, onProgress);
 }

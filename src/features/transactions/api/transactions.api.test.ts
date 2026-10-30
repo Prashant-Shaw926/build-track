@@ -239,6 +239,9 @@ describe('transaction sync', () => {
       syncToken,
       changesSynced: true,
       changesErrorMessage: null,
+      historyComplete: true,
+      resumeCursor: null,
+      readyMonths: ['2026-10'],
     };
   }
 
@@ -383,5 +386,100 @@ describe('transaction sync', () => {
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).message).toBe('Bad request');
     expect(listAttempts).toBe(1);
+  });
+
+  it('publishes the latest ready month before the rest of history finishes', async () => {
+    const progress: TransactionSnapshot[] = [];
+    const pages: TransactionPage[] = [
+      {
+        items: [transaction('O1', '2026-10-10T10:00:00Z'), transaction('O2', '2026-10-02T10:00:00Z')],
+        next_cursor: 'c2',
+        sync_token: 'st_full',
+      },
+      {
+        items: [transaction('O2', '2026-10-02T10:00:00Z'), transaction('S1', '2026-09-15T10:00:00Z')],
+        next_cursor: 'c3',
+        sync_token: 'st_full',
+      },
+      {
+        items: [transaction('S2', '2026-09-01T10:00:00Z')],
+        next_cursor: null,
+        sync_token: 'st_full',
+      },
+    ];
+    let pageIndex = 0;
+
+    apiClient.defaults.adapter = (config) => {
+      const url = config.url ?? '';
+
+      if (url.includes('/changes')) {
+        return jsonResponse(config, { items: [], next_cursor: null, sync_token: 'st_after' });
+      }
+
+      const page = pages[pageIndex];
+      pageIndex += 1;
+
+      if (page === undefined) {
+        return Promise.reject(new Error('unexpected page'));
+      }
+
+      return jsonResponse(config, page);
+    };
+
+    const loaded = await loadTransactionSnapshot(null, {
+      onProgress: (snapshot) => {
+        progress.push(snapshot);
+      },
+    });
+
+    expect(progress.length).toBeGreaterThanOrEqual(1);
+    expect(progress[0]?.historyComplete).toBe(false);
+    expect(progress[0]?.readyMonths).toEqual(['2026-10']);
+    expect(progress[0]?.syncToken).toBeNull();
+    expect(loaded.historyComplete).toBe(true);
+    expect(loaded.readyMonths).toEqual(['2026-09', '2026-10']);
+    expect(loaded.syncToken).toBe('st_after');
+    expect(loaded.items.map((item) => item.id)).toEqual(['O1', 'O2', 'S1', 'S2']);
+  });
+
+  it('resumes an incomplete snapshot from the saved cursor', async () => {
+    const cursors: Array<string | undefined> = [];
+    const previous: TransactionSnapshot = {
+      items: [
+        transaction('O1', '2026-10-10T10:00:00Z'),
+        transaction('O2', '2026-10-02T10:00:00Z'),
+        transaction('S1', '2026-09-15T10:00:00Z'),
+      ],
+      syncToken: null,
+      changesSynced: false,
+      changesErrorMessage: null,
+      historyComplete: false,
+      resumeCursor: 'resume-me',
+      readyMonths: ['2026-10'],
+    };
+
+    apiClient.defaults.adapter = (config) => {
+      const url = config.url ?? '';
+      const params = config.params as { cursor?: string } | undefined;
+
+      if (url.includes('/changes')) {
+        return jsonResponse(config, { items: [], next_cursor: null, sync_token: 'st_after' });
+      }
+
+      cursors.push(params?.cursor);
+
+      return jsonResponse(config, {
+        items: [transaction('S2', '2026-09-01T10:00:00Z')],
+        next_cursor: null,
+        sync_token: 'st_full',
+      });
+    };
+
+    const loaded = await loadTransactionSnapshot(previous);
+
+    expect(cursors).toEqual(['resume-me']);
+    expect(loaded.historyComplete).toBe(true);
+    expect(loaded.items.map((item) => item.id)).toEqual(['O1', 'O2', 'S1', 'S2']);
+    expect(loaded.readyMonths).toEqual(['2026-09', '2026-10']);
   });
 });

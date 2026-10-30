@@ -94,9 +94,13 @@ describe('useTrackData - search debounce and instant filter safeguards', () => {
         syncToken: 'st_123',
         changesSynced: true,
         changesErrorMessage: null,
+        historyComplete: true,
+        resumeCursor: null,
+        readyMonths: ['2026-09', '2026-10'],
       },
       isPending: false,
       isError: false,
+      isFetching: false,
       isRefetching: false,
       dataUpdatedAt: Date.now(),
       refetch: jest.fn().mockResolvedValue({ isError: false }),
@@ -335,9 +339,13 @@ describe('useTrackData - search debounce and instant filter safeguards', () => {
         syncToken: 'st_123',
         changesSynced: true,
         changesErrorMessage: null,
+        historyComplete: true,
+        resumeCursor: null,
+        readyMonths: ['2026-09', '2026-10'],
       },
       isPending: false,
       isError: false,
+      isFetching: false,
       isRefetching: false,
       dataUpdatedAt: Date.now(),
       refetch: mockRefetchTransactions,
@@ -360,5 +368,86 @@ describe('useTrackData - search debounce and instant filter safeguards', () => {
       result.current.retrySummary();
     });
     expect(mockRefetchTransactions).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('useTrackData - progressive month readiness', () => {
+  beforeEach(() => {
+    mockUseAccounts.mockReturnValue({
+      data: { items: sampleAccounts },
+      isPending: false,
+      isError: false,
+      isRefetching: false,
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
+    });
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('shows the latest ready month while older months are still loading in the background', async () => {
+    mockUseTransactions.mockReturnValue({
+      data: {
+        items: sampleTransactions,
+        syncToken: null,
+        changesSynced: false,
+        changesErrorMessage: null,
+        historyComplete: false,
+        resumeCursor: 'cursor-next',
+        readyMonths: ['2026-10'],
+      },
+      isPending: false,
+      isError: false,
+      isFetching: true,
+      // TanStack marks isRefetching once setQueryData has published the first month
+      isRefetching: true,
+      dataUpdatedAt: Date.now(),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
+    });
+
+    const { result } = await renderHook(() => useTrackData());
+
+    expect(result.current.view.selectedMonth).toBe('2026-10');
+    expect(result.current.summaryStatus).toBe('ready');
+    expect(result.current.transactionsStatus).toBe('ready');
+    expect(result.current.refreshing).toBe(false);
+    expect(result.current.listBusy).toBe(false);
+    expect(result.current.view.transactions).toHaveLength(3);
+    expect(result.current.view.months).toEqual(['2026-09', '2026-10']);
+  });
+
+  it('uses the existing loader when the selected month is not ready yet', async () => {
+    mockUseTransactions.mockReturnValue({
+      data: {
+        items: sampleTransactions,
+        syncToken: null,
+        changesSynced: false,
+        changesErrorMessage: null,
+        historyComplete: false,
+        resumeCursor: 'cursor-next',
+        readyMonths: ['2026-10'],
+      },
+      isPending: false,
+      isError: false,
+      isFetching: true,
+      isRefetching: true,
+      dataUpdatedAt: Date.now(),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
+    });
+
+    const { result } = await renderHook(() => useTrackData());
+
+    await act(async () => {
+      result.current.selectMonth('2026-09');
+    });
+
+    expect(result.current.view.selectedMonth).toBe('2026-09');
+    expect(result.current.summaryStatus).toBe('loading');
+    expect(result.current.transactionsStatus).toBe('loading');
+    expect(result.current.refreshing).toBe(false);
+    expect(result.current.view.transactions).toHaveLength(0);
+    expect(result.current.view.income).toBeNull();
+    expect(result.current.view.spend).toBeNull();
   });
 });
