@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -12,6 +12,7 @@ import { TransactionDetailSheet } from '@/features/transactions/components/trans
 import { TransactionList } from '@/features/transactions/components/transaction-list';
 import { useTrackData } from '@/features/transactions/hooks/use-track-data';
 import { applyTrackList } from '@/features/transactions/utils/track-list';
+import { resolveAccountLabel } from '@/features/transactions/utils/track-month';
 import { Spacing } from '@/constants/theme';
 
 export function TrackScreen() {
@@ -23,7 +24,7 @@ export function TrackScreen() {
     const matched = applyTrackList(track.view.monthTransactions, {
       query: track.query,
       category: track.category,
-      sort: track.sort,
+      sort: 'source',
       direction: 'all',
     });
     let debit = 0;
@@ -38,11 +39,13 @@ export function TrackScreen() {
     }
 
     return { all: matched.length, debit, credit };
-  }, [track.category, track.query, track.sort, track.view.monthTransactions]);
+  }, [track.category, track.query, track.view.monthTransactions]);
   const selectedTransaction =
     selectedId === null ? null : (track.view.monthTransactions.find((item) => item.id === selectedId) ?? null);
-  const selectedRow =
-    selectedTransaction === null ? null : (track.view.transactions.find((item) => item.id === selectedTransaction.id) ?? null);
+
+  const handleSelect = useCallback((id: string) => {
+    setSelectedId(id);
+  }, []);
 
   useEffect(() => {
     if (selectedId !== null && selectedTransaction === null) {
@@ -110,13 +113,13 @@ export function TrackScreen() {
             track.view.monthTransactions.length > 0 ? 'No matching transactions' : 'No transactions in this month'
           }
           onRetry={track.retryTransactions}
-          onSelect={setSelectedId}
+          onSelect={handleSelect}
           onRefresh={track.refresh}
           refreshing={track.refreshing}
           updating={track.listBusy}
         />
         <TransactionDetailSheet
-          accountLabel={selectedRow?.accountLabel ?? null}
+          accountLabel={selectedTransaction === null ? null : resolveAccountLabel(selectedTransaction, track.accounts)}
           onClose={() => setSelectedId(null)}
           transaction={selectedTransaction}
         />

@@ -1,5 +1,10 @@
 import type { NormalizedTransaction } from '@/features/transactions/types/normalized-transaction.types';
-import { formatMonthTotals, indiaMonthKey, isOwnAccountTransfer } from '@/features/transactions/utils/month-totals';
+import {
+  formatMinorDecimal,
+  formatMonthTotals,
+  indiaMonthKey,
+  isOwnAccountTransfer,
+} from '@/features/transactions/utils/month-totals';
 
 function transaction(overrides: Partial<NormalizedTransaction> = {}): NormalizedTransaction {
   return {
@@ -25,6 +30,12 @@ function transaction(overrides: Partial<NormalizedTransaction> = {}): Normalized
 }
 
 describe('month totals', () => {
+  it('keeps the sign for negative minor amounts', () => {
+    expect(formatMinorDecimal(-5)).toBe('-0.05');
+    expect(formatMinorDecimal(-100)).toBe('-1.00');
+    expect(formatMinorDecimal(-105)).toBe('-1.05');
+  });
+
   it('uses the India month for a timestamp that is still the previous UTC day', () => {
     expect(indiaMonthKey(Date.parse('2026-08-31T21:00:00Z'))).toBe('2026-09');
   });

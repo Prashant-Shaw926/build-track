@@ -9,7 +9,6 @@ import {
   queryClient,
   queryPersister,
 } from '@/lib/query/query-client';
-import { StorageUnavailableError } from '@/lib/storage/storage';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -29,7 +28,12 @@ export default function RootLayout() {
           maxAge: QUERY_PERSIST_MAX_AGE_MS,
         }}
         onError={() => {
-          throw new StorageUnavailableError('Failed to restore the persisted query cache.');
+          console.warn('[PersistQueryClient] Cache restore failed. Clearing persisted cache so fresh data is fetched from the network.');
+          try {
+            queryPersister.removeClient();
+          } catch (e) {
+            console.warn('[PersistQueryClient] Could not clear persisted cache:', e);
+          }
         }}>
         <Stack screenOptions={{ headerShown: false }} />
       </PersistQueryClientProvider>

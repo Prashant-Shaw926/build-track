@@ -1,4 +1,5 @@
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { memo, useCallback } from 'react';
+import { ActivityIndicator, FlatList, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { TrackStatus } from '@/features/transactions/components/track-status';
@@ -20,6 +21,64 @@ interface TransactionListProps {
   onRefresh: () => void;
 }
 
+interface TransactionRowProps {
+  item: TrackTransactionRow;
+  borderBottomColor: string;
+  onSelect: (id: string) => void;
+}
+
+const keyExtractor = (item: TrackTransactionRow) => item.id;
+
+const TransactionRow = memo(function TransactionRow({
+  item,
+  borderBottomColor,
+  onSelect,
+}: TransactionRowProps) {
+  const handlePress = useCallback(() => {
+    onSelect(item.id);
+  }, [item.id, onSelect]);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={item.merchant}
+      onPress={handlePress}
+      style={[styles.row, { borderBottomColor }]}>
+      <View style={styles.copy}>
+        <View style={styles.merchantSlot}>
+          <ThemedText type="smallBold" numberOfLines={1} ellipsizeMode="tail">
+            {item.merchant}
+          </ThemedText>
+        </View>
+        <ThemedText type="small" themeColor="textSecondary">
+          {item.categoryLabel}
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {item.dateLabel}
+          {item.accountLabel === null ? '' : ` · ${item.accountLabel}`}
+          {item.statusLabel === null ? '' : ` · ${item.statusLabel}`}
+        </ThemedText>
+      </View>
+      <View style={styles.amount}>
+        <ThemedText type="small" themeColor="textSecondary">
+          {item.directionLabel}
+        </ThemedText>
+        <ThemedText
+          style={styles.amountValue}
+          themeColor={item.directionLabel === 'Credit' ? 'income' : 'spend'}
+          type="smallBold">
+          {item.amountPrimary}
+        </ThemedText>
+        {item.amountSecondary === null ? null : (
+          <ThemedText type="small" themeColor="textSecondary">
+            {item.amountSecondary}
+          </ThemedText>
+        )}
+      </View>
+    </Pressable>
+  );
+});
+
 export function TransactionList({
   status,
   transactions,
@@ -33,6 +92,17 @@ export function TransactionList({
   onRefresh,
 }: TransactionListProps) {
   const theme = useTheme();
+
+  const renderItem = useCallback(
+    ({ item }: { item: TrackTransactionRow }) => (
+      <TransactionRow
+        item={item}
+        borderBottomColor={theme.backgroundSelected}
+        onSelect={onSelect}
+      />
+    ),
+    [onSelect, theme.backgroundSelected],
+  );
 
   if (status === 'loading') {
     return <TrackStatus title="Loading transactions" />;
@@ -54,52 +124,18 @@ export function TransactionList({
     <FlatList
       style={styles.listView}
       data={transactions}
-      keyExtractor={(item) => item.id}
+      keyExtractor={keyExtractor}
+      initialNumToRender={15}
+      maxToRenderPerBatch={10}
+      windowSize={11}
+      removeClippedSubviews={Platform.OS !== 'web'}
       refreshControl={
         <RefreshControl colors={[theme.text]} onRefresh={onRefresh} refreshing={refreshing} tintColor={theme.text} />
       }
       contentContainerStyle={[styles.list, { paddingBottom: bottomInset + Spacing.four }, transactions.length === 0 ? styles.emptyList : null]}
       ListHeaderComponent={updatingHeader}
       ListEmptyComponent={<TrackStatus title={emptyTitle} />}
-      renderItem={({ item }) => (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={item.merchant}
-          onPress={() => onSelect(item.id)}
-          style={[styles.row, { borderBottomColor: theme.backgroundSelected }]}>
-          <View style={styles.copy}>
-            <View style={styles.merchantSlot}>
-              <ThemedText type="smallBold" numberOfLines={1} ellipsizeMode="tail">
-                {item.merchant}
-              </ThemedText>
-            </View>
-            <ThemedText type="small" themeColor="textSecondary">
-              {item.categoryLabel}
-            </ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              {item.dateLabel}
-              {item.accountLabel === null ? '' : ` · ${item.accountLabel}`}
-              {item.statusLabel === null ? '' : ` · ${item.statusLabel}`}
-            </ThemedText>
-          </View>
-          <View style={styles.amount}>
-            <ThemedText type="small" themeColor="textSecondary">
-              {item.directionLabel}
-            </ThemedText>
-            <ThemedText
-              style={styles.amountValue}
-              themeColor={item.directionLabel === 'Credit' ? 'income' : 'spend'}
-              type="smallBold">
-              {item.amountPrimary}
-            </ThemedText>
-            {item.amountSecondary === null ? null : (
-              <ThemedText type="small" themeColor="textSecondary">
-                {item.amountSecondary}
-              </ThemedText>
-            )}
-          </View>
-        </Pressable>
-      )}
+      renderItem={renderItem}
     />
   );
 }

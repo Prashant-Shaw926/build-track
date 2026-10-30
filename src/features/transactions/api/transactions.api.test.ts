@@ -358,4 +358,30 @@ describe('transaction sync', () => {
     expect(loaded.syncToken).toBe('st_after');
     expect(loaded.changesSynced).toBe(true);
   });
+
+  it('rejects without looping if the full refetch also fails after 410', async () => {
+    const previous = snapshot('st_old');
+    let listAttempts = 0;
+
+    apiClient.defaults.adapter = (config) => {
+      const url = config.url ?? '';
+      if (url.includes('/changes')) {
+        return Promise.reject(httpError(410, { error: 'sync_token_expired' }, 'Request failed with status code 410'));
+      }
+
+      listAttempts += 1;
+      return Promise.reject(httpError(400, { error: 'bad_request' }, 'Bad request'));
+    };
+
+    let error: unknown = null;
+    try {
+      await loadTransactionSnapshot(previous);
+    } catch (err) {
+      error = err;
+    }
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).message).toBe('Bad request');
+    expect(listAttempts).toBe(1);
+  });
 });

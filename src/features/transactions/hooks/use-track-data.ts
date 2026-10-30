@@ -4,6 +4,7 @@ import { readTransactionSnapshot } from '@/features/transactions/api/transaction
 import { useAccounts } from '@/features/transactions/hooks/use-accounts';
 import { useTransactions } from '@/features/transactions/hooks/use-transactions';
 import { apiErrorMessage } from '@/lib/api/client';
+import type { NormalizedTransaction } from '@/features/transactions/types/normalized-transaction.types';
 import { normalizeTransactions } from '@/features/transactions/utils/normalize-transaction';
 import {
   applyTrackList,
@@ -60,6 +61,10 @@ export function useTrackData() {
   const [listBusy, setListBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const appliedKey = useRef<string | null>(null);
+  const appliedNonQueryKey = useRef<string | null>(null);
+  const appliedQuery = useRef<string>('');
+  const appliedTransactions = useRef<readonly NormalizedTransaction[] | null>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const snapshot = useMemo(() => readTransactionSnapshot(transactionsQuery.data), [transactionsQuery.data]);
   const transactionItems = snapshot?.items;
@@ -78,40 +83,67 @@ export function useTrackData() {
     [accountsQuery.data?.items, results, selectedMonth, transactionItems],
   );
 
-  const criteriaKey = `${monthView.selectedMonth ?? ''}|${query}|${categoryFilterKey(category)}|${sort}|${direction}`;
+  const nonQueryKey = `${monthView.selectedMonth ?? ''}|${categoryFilterKey(category)}|${sort}|${direction}`;
+  const criteriaKey = `${nonQueryKey}|${query}`;
 
   useEffect(() => {
+    const clearDebounce = () => {
+      if (debounceTimer.current !== null) {
+        clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+      }
+    };
+
     if (transactionItems === undefined) {
-      return;
+      return clearDebounce;
     }
 
-    const rows = toTrackTransactionRows(
-      applyTrackList(monthView.monthTransactions, { query, category, sort, direction }),
-      accountsQuery.data?.items,
-    );
-    const criteriaChanged = appliedKey.current !== null && appliedKey.current !== criteriaKey;
+    const computeRows = () =>
+      toTrackTransactionRows(
+        applyTrackList(monthView.monthTransactions, { query, category, sort, direction }),
+        accountsQuery.data?.items,
+      );
 
-    if (!criteriaChanged) {
+    const isInitial = appliedKey.current === null;
+    const transactionsChanged = appliedTransactions.current !== monthView.monthTransactions;
+    const nonQueryChanged = appliedNonQueryKey.current !== nonQueryKey;
+    const queryChanged = appliedQuery.current !== query;
+
+    if (!isInitial && !transactionsChanged && !nonQueryChanged && !queryChanged) {
+      return clearDebounce;
+    }
+
+    appliedTransactions.current = monthView.monthTransactions;
+
+    if (isInitial || transactionsChanged || nonQueryChanged) {
+      clearDebounce();
       appliedKey.current = criteriaKey;
-      setDisplayed(rows);
+      appliedNonQueryKey.current = nonQueryKey;
+      appliedQuery.current = query;
+      setDisplayed(computeRows());
       setListBusy(false);
-      return;
+      return clearDebounce;
     }
 
+    clearDebounce();
     setListBusy(true);
-    const timer = setTimeout(() => {
+    debounceTimer.current = setTimeout(() => {
       appliedKey.current = criteriaKey;
-      setDisplayed(rows);
+      appliedNonQueryKey.current = nonQueryKey;
+      appliedQuery.current = query;
+      setDisplayed(computeRows());
       setListBusy(false);
+      debounceTimer.current = null;
     }, LIST_UPDATE_DELAY_MS);
 
-    return () => clearTimeout(timer);
+    return clearDebounce;
   }, [
     accountsQuery.data?.items,
     category,
     criteriaKey,
     direction,
     monthView.monthTransactions,
+    nonQueryKey,
     query,
     sort,
     transactionItems,
@@ -139,6 +171,7 @@ export function useTrackData() {
 
   return {
     view,
+    accounts: accountsQuery.data?.items,
     categoryChoices: choices,
     query,
     category,

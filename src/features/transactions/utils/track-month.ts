@@ -130,7 +130,7 @@ export function resolveSelectedMonth(months: readonly string[], selectedMonth: s
   return months[months.length - 1] ?? null;
 }
 
-function accountLabel(transaction: NormalizedTransaction, accounts: readonly Account[] | undefined): string | null {
+export function resolveAccountLabel(transaction: NormalizedTransaction, accounts: readonly Account[] | undefined): string | null {
   if (transaction.accountId !== null && accounts !== undefined) {
     const account = accounts.find((item) => item.id === transaction.accountId);
 
@@ -165,7 +165,7 @@ function toRow(transaction: NormalizedTransaction, accounts: readonly Account[] 
     statusLabel: transaction.status === 'PENDING' ? 'Pending' : null,
     amountPrimary: amount.primary,
     amountSecondary: amount.secondary,
-    accountLabel: accountLabel(transaction, accounts),
+    accountLabel: resolveAccountLabel(transaction, accounts),
   };
 }
 
