@@ -1,7 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 
-import { toApiError } from '@/lib/api/client';
 import { storage, type KeyValueStorage } from '@/lib/storage/storage';
 
 export const QUERY_STALE_TIME_MS = 60_000;
@@ -15,7 +14,7 @@ export function createQueryClient(): QueryClient {
         staleTime: QUERY_STALE_TIME_MS,
         gcTime: QUERY_GC_TIME_MS,
         networkMode: 'always',
-        retry: (failureCount, error) => !toApiError(error).isNetworkError && failureCount < 2,
+        retry: false,
         refetchOnReconnect: true,
         refetchOnWindowFocus: false,
       },

@@ -8,7 +8,7 @@ import {
   type TransactionSnapshot,
 } from '@/features/transactions/api/transactions.api';
 import type { Transaction, TransactionPage } from '@/features/transactions/types/transaction.types';
-import { ApiError, apiClient } from '@/lib/api/client';
+import { API_RETRY_ATTEMPTS, ApiError, apiClient } from '@/lib/api/client';
 
 const TEST_BASE_URL = 'http://127.0.0.1:4010';
 
@@ -37,17 +37,23 @@ function jsonResponse(config: InternalAxiosRequestConfig, data: unknown) {
   });
 }
 
-function httpError(status: number, data: unknown, message: string): AxiosError {
+function httpError(status: number, data: unknown, message: string, headers: Record<string, string> = {}): AxiosError {
   const config = { headers: {} } as InternalAxiosRequestConfig;
   const response = {
     status,
     statusText: 'Error',
-    headers: {},
+    headers,
     config,
     data,
   } as AxiosResponse;
 
   return new AxiosError(message, String(status), config, undefined, response);
+}
+
+async function finishWithFakeTimers<T>(pending: Promise<T>): Promise<T> {
+  await jest.runAllTimersAsync();
+
+  return pending;
 }
 
 describe('transactions api', () => {
@@ -59,6 +65,7 @@ describe('transactions api', () => {
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     apiClient.defaults.adapter = originalAdapter;
     apiClient.defaults.baseURL = originalBaseURL;
   });
@@ -125,7 +132,43 @@ describe('transactions api', () => {
     ]);
   });
 
+  it('retries a failed page in place, then keeps paging from that cursor', async () => {
+    jest.useFakeTimers();
+    const cursors: Array<string | undefined> = [];
+    let calls = 0;
+
+    apiClient.defaults.adapter = (config) => {
+      calls += 1;
+      const params = config.params as { cursor?: string } | undefined;
+      cursors.push(params?.cursor);
+
+      if (calls === 1) {
+        return jsonResponse(config, {
+          items: [transaction('A', '2026-10-10T17:00:00Z')],
+          next_cursor: 'cursor-2',
+          sync_token: 'st_full',
+        });
+      }
+
+      if (calls === 2) {
+        return Promise.reject(httpError(500, { error: 'internal_error' }, 'Request failed with status code 500'));
+      }
+
+      return jsonResponse(config, {
+        items: [transaction('B', '2026-10-10T16:00:00Z')],
+        next_cursor: null,
+        sync_token: 'st_full',
+      });
+    };
+
+    const items = await finishWithFakeTimers(fetchAllTransactions());
+
+    expect(cursors).toEqual([undefined, 'cursor-2', 'cursor-2']);
+    expect(items.map((item) => item.id)).toEqual(['A', 'B']);
+  });
+
   it('rejects with the page error instead of returning a partial list', async () => {
+    jest.useFakeTimers();
     let calls = 0;
 
     apiClient.defaults.adapter = (config) => {
@@ -142,7 +185,7 @@ describe('transactions api', () => {
       return Promise.reject(httpError(500, { error: 'internal_error' }, 'Request failed with status code 500'));
     };
 
-    const error = await fetchAllTransactions().catch((caught: unknown) => caught);
+    const error = await finishWithFakeTimers(fetchAllTransactions().catch((caught: unknown) => caught));
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({
@@ -150,7 +193,7 @@ describe('transactions api', () => {
       status: 500,
       isNetworkError: false,
     });
-    expect(calls).toBe(2);
+    expect(calls).toBe(1 + API_RETRY_ATTEMPTS);
   });
 
   it('stops when a cursor is repeated and does not request another page', async () => {
@@ -185,6 +228,7 @@ describe('transaction sync', () => {
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     apiClient.defaults.adapter = originalAdapter;
     apiClient.defaults.baseURL = originalBaseURL;
   });
@@ -228,7 +272,8 @@ describe('transaction sync', () => {
       });
     };
 
-    const loaded = await loadTransactionSnapshot(null);
+    jest.useFakeTimers();
+    const loaded = await finishWithFakeTimers(loadTransactionSnapshot(null));
 
     expect(listCalls).toBe(1);
     expect(changesCalls).toBe(2);
@@ -252,7 +297,8 @@ describe('transaction sync', () => {
       });
     };
 
-    const loaded = await loadTransactionSnapshot(null);
+    jest.useFakeTimers();
+    const loaded = await finishWithFakeTimers(loadTransactionSnapshot(null));
 
     expect(loaded.items.map((item) => item.id)).toEqual(['A']);
     expect(loaded.syncToken).toBe('st_full');

@@ -37,7 +37,7 @@ export function SummaryOverview({ status, income, spend, errorMessage, onRetry }
       </ThemedView>
       <ThemedView type="backgroundElement" style={styles.card}>
         <ThemedText type="small" themeColor="textSecondary">
-          Spent
+          Expense
         </ThemedText>
         <ThemedText style={styles.amount} themeColor="spend">{`₹${spend}`}</ThemedText>
       </ThemedView>

@@ -1,4 +1,4 @@
-import { ApiError, apiClient, apiErrorMessage, toApiError } from '@/lib/api/client';
+import { ApiError, apiErrorMessage, apiGet, toApiError } from '@/lib/api/client';
 import { applyTransactionChanges } from '@/features/transactions/utils/apply-transaction-changes';
 import type {
   ApiTransaction,
@@ -13,7 +13,6 @@ import { requireApiUrl } from './require-api-url';
 export const TRANSACTION_PAGE_LIMIT = 50;
 
 const REPEATED_CURSOR_MESSAGE = 'Transaction pagination returned a cursor that was already used.';
-const CHANGE_STATUS_ATTEMPTS = 3;
 
 export interface TransactionSnapshot {
   items: ApiTransaction[];
@@ -37,11 +36,7 @@ export async function fetchTransactionsPage(
     query.cursor = params.cursor;
   }
 
-  const response = await apiClient.get<TransactionPage>('/v1/transactions', {
-    params: query,
-  });
-
-  return response.data;
+  return apiGet<TransactionPage>('/v1/transactions', { params: query });
 }
 
 export async function fetchAllTransactions(): Promise<ApiTransaction[]> {
@@ -95,10 +90,6 @@ export async function fetchAllTransactionsWithToken(): Promise<Pick<TransactionS
   }
 }
 
-function isRetryableChangeStatus(status: number | null): boolean {
-  return status === 429 || status === 503;
-}
-
 async function fetchChangesPage(since: string, cursor: string | null): Promise<TransactionChangesPage> {
   const params: { since: string; limit: number; cursor?: string } = {
     since,
@@ -109,28 +100,7 @@ async function fetchChangesPage(since: string, cursor: string | null): Promise<T
     params.cursor = cursor;
   }
 
-  const response = await apiClient.get<TransactionChangesPage>('/v1/transactions/changes', { params });
-
-  return response.data;
-}
-
-async function fetchChangesPageWithStatusRetry(since: string, cursor: string | null): Promise<TransactionChangesPage> {
-  let attempt = 0;
-
-  for (;;) {
-    try {
-      return await fetchChangesPage(since, cursor);
-    } catch (error) {
-      const apiError = toApiError(error);
-      const retryable = !apiError.isNetworkError && isRetryableChangeStatus(apiError.status);
-
-      if (!retryable || attempt >= CHANGE_STATUS_ATTEMPTS - 1) {
-        throw apiError;
-      }
-
-      attempt += 1;
-    }
-  }
+  return apiGet<TransactionChangesPage>('/v1/transactions/changes', { params });
 }
 
 export async function fetchTransactionChanges(since: string): Promise<{ items: TransactionChange[]; syncToken: string }> {
@@ -142,7 +112,7 @@ export async function fetchTransactionChanges(since: string): Promise<{ items: T
   let syncToken = since;
 
   for (;;) {
-    const page = await fetchChangesPageWithStatusRetry(since, cursor);
+    const page = await fetchChangesPage(since, cursor);
 
     items.push(...page.items);
 

@@ -66,13 +66,13 @@ export function TransactionControls({
       <View style={styles.actions}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={categoryActive ? `Filters on, ${categoryLabel}` : 'Filters'}
+          accessibilityLabel={categoryActive ? `Filters on, ${categoryLabel}` : `Filters, ${categoryLabel}`}
           accessibilityState={{ selected: categoryActive }}
           onPress={() => setCategoryOpen(true)}
           style={[styles.action, { backgroundColor: categoryActive ? theme.backgroundActive : theme.backgroundElement }]}>
           {categoryActive ? <View style={[styles.mark, { backgroundColor: theme.text }]} /> : null}
           <ThemedText numberOfLines={1} style={styles.actionLabel} type={categoryActive ? 'smallBold' : 'small'}>
-            {categoryActive ? categoryLabel : 'Filters'}
+            {categoryLabel}
           </ThemedText>
         </Pressable>
         <Pressable

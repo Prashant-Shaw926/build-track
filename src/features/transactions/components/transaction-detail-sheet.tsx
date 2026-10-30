@@ -5,6 +5,7 @@ import { BottomSheet } from '@/features/transactions/components/bottom-sheet';
 import type { NormalizedTransaction } from '@/features/transactions/types/normalized-transaction.types';
 import { displayMerchantName } from '@/features/transactions/utils/display-merchant-name';
 import { formatTransactionAmount } from '@/features/transactions/utils/format-amount';
+import { isOwnAccountTransfer } from '@/features/transactions/utils/month-totals';
 import { formatTransactionTimestamp } from '@/features/transactions/utils/track-month';
 import { Spacing } from '@/constants/theme';
 
@@ -33,10 +34,10 @@ function amountText(transaction: NormalizedTransaction): string {
 
 function detailLines(transaction: NormalizedTransaction, accountLabel: string | null): DetailLine[] {
   const lines: DetailLine[] = [
-    { label: 'Direction', value: transaction.direction === 'debit' ? 'Debit' : 'Credit' },
+    { label: 'Transaction Type', value: transaction.direction === 'debit' ? 'Debit' : 'Credit' },
     { label: 'Category', value: transaction.category ?? 'No category' },
-    { label: 'Date', value: formatTimestamp(transaction.occurredAt) },
-    { label: 'Status', value: transaction.status === 'PENDING' ? 'Pending' : 'Posted' },
+    { label: 'Transaction Date', value: formatTimestamp(transaction.occurredAt) },
+    { label: 'Status', value: transaction.status === 'PENDING' ? 'Pending' : 'Settled' },
     { label: 'Currency', value: transaction.currency ?? 'INR' },
   ];
 
@@ -53,7 +54,7 @@ function detailLines(transaction: NormalizedTransaction, accountLabel: string | 
   }
 
   if (transaction.updatedAt !== null) {
-    lines.push({ label: 'Updated', value: formatTimestamp(transaction.updatedAt) });
+    lines.push({ label: 'Updated on', value: formatTimestamp(transaction.updatedAt) });
   }
 
   if (transaction.counterparty !== null) {
@@ -122,6 +123,11 @@ export function TransactionDetailSheet({ transaction, accountLabel, onClose }: T
             <ThemedText themeColor={transaction.direction === 'credit' ? 'income' : 'spend'} type="subtitle">
               {amountText(transaction)}
             </ThemedText>
+            {isOwnAccountTransfer(transaction) ? (
+              <ThemedText themeColor="textSecondary" type="small">
+                This is a self-transfer, not an actual expense or income.
+              </ThemedText>
+            ) : null}
           </View>
         )
       }

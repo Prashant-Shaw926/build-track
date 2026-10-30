@@ -7,8 +7,8 @@ import { Spacing } from '@/constants/theme';
 
 const OPTIONS: readonly { direction: DirectionFilter; label: string }[] = [
   { direction: 'all', label: 'All' },
-  { direction: 'debit', label: 'Debits' },
-  { direction: 'credit', label: 'Credits' },
+  { direction: 'credit', label: 'Income' },
+  { direction: 'debit', label: 'Expense' },
 ];
 
 export interface DirectionCounts {
