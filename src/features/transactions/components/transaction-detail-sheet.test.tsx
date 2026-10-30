@@ -1,15 +1,34 @@
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 
-jest.mock('@/features/transactions/components/bottom-sheet', () => ({
-  BottomSheet: ({ visible, header, children }: { visible: boolean; header: React.ReactNode; children: React.ReactNode }) =>
-    visible ? (
-      <>
-        {header}
-        {children}
-      </>
-    ) : null,
-}));
+jest.mock('@/features/transactions/components/bottom-sheet', () => {
+  const { Pressable, Text } = require('react-native');
+
+  return {
+    BottomSheet: ({
+      visible,
+      header,
+      children,
+      closeLabel,
+      onClose,
+    }: {
+      visible: boolean;
+      header?: React.ReactNode;
+      children: React.ReactNode;
+      closeLabel: string;
+      onClose: () => void;
+    }) =>
+      visible ? (
+        <>
+          {header}
+          <Pressable accessibilityLabel={closeLabel} accessibilityRole="button" onPress={onClose}>
+            <Text>×</Text>
+          </Pressable>
+          {children}
+        </>
+      ) : null,
+  };
+});
 
 import { TransactionDetailSheet } from '@/features/transactions/components/transaction-detail-sheet';
 import type { NormalizedTransaction } from '@/features/transactions/types/normalized-transaction.types';
@@ -46,31 +65,36 @@ describe('TransactionDetailSheet', () => {
     counterparty: { type: 'OWN_ACCOUNT', accountId: 'acc_2' },
   };
 
-  it('renders normal transaction details', async () => {
-    const { getByText } = await render(
-      <TransactionDetailSheet
-        transaction={normalTx}
-        accountLabel="HDFC Savings"
-        onClose={jest.fn()}
-      />
+  it('renders normal transaction details with settled status and close control', async () => {
+    const handleClose = jest.fn();
+
+    await render(
+      <TransactionDetailSheet transaction={normalTx} accountLabel="HDFC Savings" onClose={handleClose} />,
     );
 
-    expect(getByText('SWIGGY BANGALORE')).toBeTruthy();
-    expect(getByText('₹350.00')).toBeTruthy();
-    expect(getByText('FOOD')).toBeTruthy();
-    expect(getByText('HDFC Savings')).toBeTruthy();
-    expect(getByText('txn_123')).toBeTruthy();
+    expect(screen.getByText('SWIGGY BANGALORE')).toBeTruthy();
+    expect(screen.getByText('₹350.00')).toBeTruthy();
+    expect(screen.getByText('FOOD')).toBeTruthy();
+    expect(screen.getByText('Settled')).toBeTruthy();
+    expect(screen.getByText('HDFC Savings')).toBeTruthy();
+    expect(screen.getByText('txn_123')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Close transaction details'));
+    expect(handleClose).toHaveBeenCalledTimes(1);
   });
 
   it('renders self-transfer note when transaction is an own-account transfer', async () => {
-    const { getByText } = await render(
-      <TransactionDetailSheet
-        transaction={selfTransferTx}
-        accountLabel="HDFC Savings"
-        onClose={jest.fn()}
-      />
+    await render(
+      <TransactionDetailSheet transaction={selfTransferTx} accountLabel="HDFC Savings" onClose={jest.fn()} />,
     );
 
-    expect(getByText('This is a self-transfer, not an actual expense or income.')).toBeTruthy();
+    expect(screen.getByText('This is a self-transfer, not an actual expense or income.')).toBeTruthy();
+  });
+
+  it('hides details when no transaction is selected', async () => {
+    await render(<TransactionDetailSheet transaction={null} accountLabel={null} onClose={jest.fn()} />);
+
+    expect(screen.queryByText('SWIGGY BANGALORE')).toBeNull();
+    expect(screen.queryByText('×')).toBeNull();
   });
 });

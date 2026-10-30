@@ -84,9 +84,67 @@ describe('track list', () => {
     expect(ids(applyTrackList(month, { ...sourceQuery, sort: 'oldest' }))).toEqual(['label', 'uber', 'blank', 'chai', 'legacy']);
   });
 
-  it('ranks supplied rupee amounts and leaves unknown currencies in source order', () => {
-    expect(ids(applyTrackList(month, { ...sourceQuery, sort: 'amount-desc' }))).toEqual(['chai', 'uber', 'label', 'blank', 'legacy']);
-    expect(ids(applyTrackList(month, { ...sourceQuery, sort: 'amount-asc' }))).toEqual(['label', 'uber', 'chai', 'blank', 'legacy']);
+  it('ranks rupee amounts including legacy null-currency rows, and leaves non-rupee without fx after them', () => {
+    const foreign = transaction({
+      id: 'eur',
+      merchant: 'EU SHOP',
+      category: 'SHOPPING',
+      occurredAtMs: 250,
+      amountMinor: 99999999,
+      currency: 'EUR',
+      inrAmountMinor: null,
+    });
+    const rows = [...month, foreign];
+
+    // blank 9999.99 (legacy), chai 48.00, uber $ with ₹20.00, label 0.50, legacy 0.10, eur unknown
+    expect(ids(applyTrackList(rows, { ...sourceQuery, sort: 'amount-desc' }))).toEqual([
+      'blank',
+      'chai',
+      'uber',
+      'label',
+      'legacy',
+      'eur',
+    ]);
+    expect(ids(applyTrackList(rows, { ...sourceQuery, sort: 'amount-asc' }))).toEqual([
+      'legacy',
+      'label',
+      'uber',
+      'chai',
+      'blank',
+      'eur',
+    ]);
+  });
+
+  it('orders legacy rupee rows by amountMinor so Highest and Lowest match the displayed ₹ values', () => {
+    const rows = [
+      transaction({
+        id: 'blinkit',
+        merchant: 'BLINKIT',
+        source: 'legacy',
+        currency: null,
+        amountMinor: 51649,
+        inrAmountMinor: null,
+      }),
+      transaction({
+        id: 'amazon',
+        merchant: 'AMAZON PAY',
+        source: 'legacy',
+        currency: null,
+        amountMinor: 546424,
+        inrAmountMinor: null,
+      }),
+      transaction({
+        id: 'chai',
+        merchant: 'UPI CHAI POINT',
+        source: 'legacy',
+        currency: null,
+        amountMinor: 4385,
+        inrAmountMinor: null,
+      }),
+    ];
+
+    expect(ids(applyTrackList(rows, { ...sourceQuery, sort: 'amount-desc' }))).toEqual(['amazon', 'blinkit', 'chai']);
+    expect(ids(applyTrackList(rows, { ...sourceQuery, sort: 'amount-asc' }))).toEqual(['chai', 'blinkit', 'amazon']);
   });
 
   it('keeps only debits or only credits from the original month order', () => {

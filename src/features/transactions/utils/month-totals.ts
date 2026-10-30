@@ -1,7 +1,7 @@
 import type { NormalizedTransaction } from '@/features/transactions/types/normalized-transaction.types';
 import { formatSummaryAmount } from '@/features/transactions/utils/format-amount';
 
-export const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
 export interface IndiaDateParts {
   year: number;

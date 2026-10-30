@@ -75,7 +75,7 @@ export function formatMonthLabel(month: string): string {
   return name === undefined ? month : `${name} ${match[1]}`;
 }
 
-export function formatTransactionDate(occurredAt: string): string {
+function formatTransactionDate(occurredAt: string): string {
   const parts = indiaDateParts(Date.parse(occurredAt));
 
   if (parts === null) {
@@ -118,7 +118,7 @@ function transactionMonths(results: readonly NormalizationResult[]): string[] {
   return [...months].sort();
 }
 
-export function resolveSelectedMonth(months: readonly string[], selectedMonth: string | null): string | null {
+function resolveSelectedMonth(months: readonly string[], selectedMonth: string | null): string | null {
   if (months.length === 0) {
     return null;
   }

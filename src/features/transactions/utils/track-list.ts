@@ -22,7 +22,7 @@ export interface CategoryChoice {
 }
 
 export const TRACK_SORT_OPTIONS: readonly { sort: TrackSort; label: string }[] = [
-  { sort: 'source', label: 'Source order' },
+  { sort: 'source', label: 'Default order' },
   { sort: 'newest', label: 'Newest first' },
   { sort: 'oldest', label: 'Oldest first' },
   { sort: 'amount-desc', label: 'Highest amount' },
@@ -54,13 +54,15 @@ function compareIndex(left: IndexedTransaction, right: IndexedTransaction): -1 |
 }
 
 function rupeeMinor(transaction: NormalizedTransaction): number | null {
-  const value = transaction.inrAmountMinor;
-
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
+  if (transaction.currency === null || transaction.currency === 'INR') {
+    return Number.isSafeInteger(transaction.amountMinor) ? transaction.amountMinor : null;
   }
 
-  return null;
+  if (transaction.inrAmountMinor === null || !Number.isSafeInteger(transaction.inrAmountMinor)) {
+    return null;
+  }
+
+  return transaction.inrAmountMinor;
 }
 
 function compareDate(left: IndexedTransaction, right: IndexedTransaction, newestFirst: boolean): -1 | 0 | 1 {

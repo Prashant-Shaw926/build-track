@@ -2,24 +2,31 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 jest.mock('@/features/transactions/components/bottom-sheet', () => {
-  const { Text } = require('react-native');
+  const { Pressable, Text } = require('react-native');
 
   return {
     BottomSheet: ({
       visible,
       title,
       selection,
+      closeLabel,
+      onClose,
       children,
     }: {
       visible: boolean;
       title?: string;
       selection?: string;
+      closeLabel: string;
+      onClose: () => void;
       children: React.ReactNode;
     }) =>
       visible ? (
         <>
           {title === undefined ? null : <Text>{title}</Text>}
           {selection === undefined ? null : <Text>{selection}</Text>}
+          <Pressable accessibilityLabel={closeLabel} accessibilityRole="button" onPress={onClose}>
+            <Text>×</Text>
+          </Pressable>
           {children}
         </>
       ) : null,
@@ -68,8 +75,20 @@ describe('TransactionControls', () => {
     await renderControls({ onCategoryChange: handleCategoryChange });
 
     fireEvent.press(screen.getByText('All categories'));
+    expect(await screen.findByText('Filters')).toBeTruthy();
+    expect(screen.getByText('Selected: All categories')).toBeTruthy();
     fireEvent.press(await screen.findByText('FOOD'));
     expect(handleCategoryChange).toHaveBeenCalledWith({ type: 'category', value: 'FOOD' });
+    await waitFor(() => {
+      expect(screen.queryByText('Filters')).toBeNull();
+    });
+  });
+
+  it('closes the filters sheet from the close button', async () => {
+    await renderControls();
+
+    fireEvent.press(screen.getByText('All categories'));
+    fireEvent.press(await screen.findByLabelText('Close filters'));
     await waitFor(() => {
       expect(screen.queryByText('Filters')).toBeNull();
     });
@@ -79,9 +98,21 @@ describe('TransactionControls', () => {
     const handleSortChange = jest.fn();
     await renderControls({ onSortChange: handleSortChange });
 
-    fireEvent.press(screen.getByText('Source order'));
+    fireEvent.press(screen.getByText('Default order'));
+    expect(await screen.findByText('Sort')).toBeTruthy();
+    expect(screen.getByText('Selected: Default order')).toBeTruthy();
     fireEvent.press(await screen.findByText('Highest amount'));
     expect(handleSortChange).toHaveBeenCalledWith('amount-desc');
+    await waitFor(() => {
+      expect(screen.queryByText('Sort')).toBeNull();
+    });
+  });
+
+  it('closes the sort sheet from the close button', async () => {
+    await renderControls();
+
+    fireEvent.press(screen.getByText('Default order'));
+    fireEvent.press(await screen.findByLabelText('Close sort'));
     await waitFor(() => {
       expect(screen.queryByText('Sort')).toBeNull();
     });

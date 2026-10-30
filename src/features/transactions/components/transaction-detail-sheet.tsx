@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { BottomSheet } from '@/features/transactions/components/bottom-sheet';
@@ -112,14 +112,7 @@ export function TransactionDetailSheet({ transaction, accountLabel, onClose }: T
       header={
         transaction === null ? null : (
           <View style={styles.headerBlock}>
-            <View style={styles.header}>
-              <ThemedText style={styles.title} type="default">
-                {displayMerchantName(transaction.merchant)}
-              </ThemedText>
-              {/* <Pressable accessibilityLabel="Close" accessibilityRole="button" onPress={onClose} style={styles.close}>
-                <ThemedText type="smallBold">Close</ThemedText>
-              </Pressable> */}
-            </View>
+            <ThemedText type="default">{displayMerchantName(transaction.merchant)}</ThemedText>
             <ThemedText themeColor={transaction.direction === 'credit' ? 'income' : 'spend'} type="subtitle">
               {amountText(transaction)}
             </ThemedText>
@@ -153,20 +146,6 @@ export function TransactionDetailSheet({ transaction, accountLabel, onClose }: T
 const styles = StyleSheet.create({
   headerBlock: {
     gap: Spacing.two,
-  },
-  header: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: Spacing.two,
-    justifyContent: 'space-between',
-  },
-  title: {
-    flex: 1,
-  },
-  close: {
-    justifyContent: 'center',
-    minHeight: 44,
-    paddingHorizontal: Spacing.two,
   },
   pair: {
     flexDirection: 'row',

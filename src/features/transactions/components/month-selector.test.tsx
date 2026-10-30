@@ -2,24 +2,31 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 jest.mock('@/features/transactions/components/bottom-sheet', () => {
-  const { Text } = require('react-native');
+  const { Pressable, Text } = require('react-native');
 
   return {
     BottomSheet: ({
       visible,
       title,
       selection,
+      closeLabel,
+      onClose,
       children,
     }: {
       visible: boolean;
       title?: string;
       selection?: string;
+      closeLabel: string;
+      onClose: () => void;
       children: React.ReactNode;
     }) =>
       visible ? (
         <>
           {title === undefined ? null : <Text>{title}</Text>}
           {selection === undefined ? null : <Text>{selection}</Text>}
+          <Pressable accessibilityLabel={closeLabel} accessibilityRole="button" onPress={onClose}>
+            <Text>×</Text>
+          </Pressable>
           {children}
         </>
       ) : null,
@@ -50,8 +57,30 @@ describe('MonthSelector', () => {
     );
 
     expect(screen.getByText('Months')).toBeTruthy();
+    expect(screen.getByText('Selected: Oct 2026')).toBeTruthy();
     fireEvent.press(screen.getByText('Aug 2026'));
     expect(handleSelect).toHaveBeenCalledWith('2026-08');
+    expect(handleClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the months sheet from the close button', async () => {
+    const handleClose = jest.fn();
+
+    await render(
+      <MonthSelector
+        months={months}
+        selectedMonth="2026-10"
+        monthLabel="Oct 2026"
+        open={true}
+        onOpen={jest.fn()}
+        onClose={handleClose}
+        onSelect={jest.fn()}
+        onPrevious={jest.fn()}
+        onNext={jest.fn()}
+      />,
+    );
+
+    fireEvent.press(screen.getByLabelText('Close months'));
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
 

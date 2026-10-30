@@ -45,7 +45,7 @@ export function TransactionControls({
   const theme = useTheme();
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
-  const sortLabel = TRACK_SORT_OPTIONS.find((option) => option.sort === sort)?.label ?? 'Source order';
+  const sortLabel = TRACK_SORT_OPTIONS.find((option) => option.sort === sort)?.label ?? 'Default order';
   const categoryLabel = categoryFilterLabel(category);
   const categoryActive = category.type !== 'all';
   const sortActive = sort !== 'source';

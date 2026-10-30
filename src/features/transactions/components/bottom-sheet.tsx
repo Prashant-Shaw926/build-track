@@ -1,15 +1,10 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing } from '@/constants/theme';
-
-const CLOSE_DISTANCE = 80;
-const CLOSE_VELOCITY = 800;
 
 interface BottomSheetProps {
   visible: boolean;
@@ -36,41 +31,13 @@ export function BottomSheet({
 }: BottomSheetProps) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
-  const translateY = useSharedValue(0);
   const layoutHeight = useRef(0);
   const contentHeight = useRef(0);
   const [hintVisible, setHintVisible] = useState(false);
 
   useEffect(() => {
-    translateY.value = 0;
     setHintVisible(false);
-  }, [translateY, visible]);
-
-  const finishClose = () => {
-    translateY.value = 0;
-    onClose();
-  };
-
-  const gesture = Gesture.Pan()
-    .onUpdate((event) => {
-      translateY.value = Math.max(0, event.translationY);
-    })
-    .onEnd((event) => {
-      if (event.translationY > CLOSE_DISTANCE || event.velocityY > CLOSE_VELOCITY) {
-        translateY.value = withTiming(480, { duration: 180 }, (finished) => {
-          if (finished) {
-            runOnJS(finishClose)();
-          }
-        });
-        return;
-      }
-
-      translateY.value = withSpring(0);
-    });
-
-  const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
+  }, [visible]);
 
   const refreshHint = (offsetY: number) => {
     const overflow = contentHeight.current > layoutHeight.current + 8;
@@ -82,25 +49,19 @@ export function BottomSheet({
 
   return (
     <Modal animationType="slide" onRequestClose={onClose} transparent visible={visible}>
-      <GestureHandlerRootView style={styles.modal}>
-        <Pressable accessibilityLabel={closeLabel} accessibilityRole="button" onPress={onClose} style={styles.backdrop} />
-        <Animated.View
+      <View style={styles.modal}>
+        <Pressable accessibilityLabel={`${closeLabel} overlay`} accessibilityRole="button" onPress={onClose} style={styles.backdrop} />
+        <View
           style={[
             styles.sheet,
-            sheetStyle,
             {
               backgroundColor: theme.background,
               maxHeight,
               paddingBottom: insets.bottom + Spacing.three,
             },
           ]}>
-          <GestureDetector gesture={gesture}>
-            <View accessibilityLabel="Drag down to close" accessibilityRole="adjustable" style={styles.handleHit}>
-              <View style={[styles.pill, { backgroundColor: theme.backgroundSelected }]} />
-            </View>
-          </GestureDetector>
-          {title === undefined && selection === undefined && header === undefined ? null : (
-            <View style={[styles.heading, { borderBottomColor: theme.backgroundSelected }]}>
+          <View style={[styles.chrome, { borderBottomColor: theme.backgroundSelected }]}>
+            <View style={styles.chromeCopy}>
               {title === undefined ? null : <ThemedText style={styles.headingTitle}>{title}</ThemedText>}
               {selection === undefined ? null : (
                 <ThemedText themeColor="textSecondary" type="small">
@@ -109,7 +70,15 @@ export function BottomSheet({
               )}
               {header}
             </View>
-          )}
+            <Pressable
+              accessibilityLabel={closeLabel}
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={onClose}
+              style={[styles.closeButton, { backgroundColor: theme.backgroundElement }]}>
+              <ThemedText style={styles.closeIcon}>×</ThemedText>
+            </Pressable>
+          </View>
           <ScrollView
             onContentSizeChange={(_width, height) => {
               contentHeight.current = height;
@@ -137,8 +106,8 @@ export function BottomSheet({
               {note}
             </ThemedText>
           )}
-        </Animated.View>
-      </GestureHandlerRootView>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -157,28 +126,39 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Spacing.three,
     gap: Spacing.two,
     paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
   },
-  heading: {
+  chrome: {
+    alignItems: 'flex-start',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: Spacing.half,
+    flexDirection: 'row',
+    gap: Spacing.two,
     marginHorizontal: -Spacing.four,
     paddingBottom: Spacing.three,
     paddingHorizontal: Spacing.four,
+  },
+  chromeCopy: {
+    flex: 1,
+    gap: Spacing.half,
+    minWidth: 0,
   },
   headingTitle: {
     fontSize: 20,
     fontWeight: 700,
     lineHeight: 26,
   },
-  handleHit: {
+  closeButton: {
     alignItems: 'center',
+    borderRadius: 18,
+    height: 36,
     justifyContent: 'center',
-    minHeight: 44,
-  },
-  pill: {
-    borderRadius: 2,
-    height: 4,
     width: 36,
+  },
+  closeIcon: {
+    fontSize: 22,
+    fontWeight: 500,
+    lineHeight: 26,
+    textAlign: 'center',
   },
   list: {
     maxHeight: 360,
