@@ -1,104 +1,96 @@
 # Architecture
 
-Design notes for the Track screen, tied to the modules that implement them.
+Short notes on how the Track screen works and where each part lives.
 
-## Cursor pagination
+## Pagination
 
-Implemented in [`src/features/transactions/api/transactions.api.ts`](../src/features/transactions/api/transactions.api.ts).
+`src/features/transactions/api/transactions.api.ts`
 
-- Page size is `TRANSACTION_PAGE_LIMIT` (**50**).
-- `fetchAllTransactionsWithToken` walks `next_cursor` until it is null.
-- Overlapping rows across pages are skipped by **transaction id** (`seenIds`).
-- A cursor that appears twice fails the sync with `ApiError` (`Transaction pagination returned a cursor that was already used.`). The same guard applies when paging the changes feed.
+- Page size is 50 (`TRANSACTION_PAGE_LIMIT`).
+- `fetchAllTransactionsWithToken` follows `next_cursor` until it is null.
+- Rows that appear on two pages are skipped by transaction id (`seenIds`).
+- If the same cursor comes back twice, the sync fails with an `ApiError`. The same check is used for the changes feed.
 
-## Progressive full sync, then changes feed, and 410 recovery
+## Sync: full history, then changes
 
-Same module: `loadTransactionSnapshot`, with month readiness in [`api-transaction-month.ts`](../src/features/transactions/utils/api-transaction-month.ts).
+Main function: `loadTransactionSnapshot` (same file). Month readiness is in `utils/api-transaction-month.ts`.
 
-The list API is newest-first and has **no month filter**, so “load latest month first” is done by streaming pages and publishing a partial snapshot as soon as the newest IST month is complete (an older month appears, or the history ends).
+The API returns newest first and can't filter by month. So to show the latest month quickly, I load pages one by one and save a partial snapshot as soon as the newest IST month is complete.
 
-1. **Cold / incomplete cache:** page `/v1/transactions` with id dedupe. After each page, recompute `readyMonths`. When the latest month becomes ready, `onProgress` writes a partial `TransactionSnapshot` (`historyComplete: false`, `syncToken: null`, `resumeCursor` set) into the Query cache so the UI can render without waiting for the full history. Background paging continues. An incomplete snapshot is resumed from `resumeCursor` on the next load (including after a cancelled queryFn — `useTransactions` resumes orphaned incomplete snapshots).
-2. **History finished:** as soon as the last page arrives, publish `historyComplete: true` (every month in the list becomes ready), attach the list `sync_token`, then request `/v1/transactions/changes?since=<token>`. Merge with [`apply-transaction-changes.ts`](../src/features/transactions/utils/apply-transaction-changes.ts). If changes fail, keep the full list, set `changesSynced: false`, and surface `changesErrorMessage`.
-3. **Warm / complete cache with token:** request changes only. On success, merge and update the token.
-4. **HTTP 410** on changes: treat the token as expired, run **one** progressive full resync, then try changes again with the new token. There is no 410 retry loop. If the full list itself fails after a 410, the error propagates and the previous snapshot stays in the Query cache until a successful load.
-5. **Pull to refresh while paging:** refresh accounts only and do not await/cancel the progressive transaction fetch (avoids a long spinner). Once history is complete, pull refresh uses the short changes-feed path.
+1. **First load or incomplete cache:** page through `/v1/transactions` and dedupe by id. After each page, work out which months are ready. When the latest month is ready, save a partial snapshot to the Query cache (`historyComplete: false`, no `syncToken`, with a `resumeCursor`) so the UI can render. Older months keep loading in the background. If the load is cancelled, the next one resumes from `resumeCursor`.
+2. **History finished:** save `historyComplete: true` with the list's `sync_token`, then call `/v1/transactions/changes?since=<token>` and merge the result (`utils/apply-transaction-changes.ts`). If the changes call fails, keep the full list, set `changesSynced: false` and show `changesErrorMessage`.
+3. **Cache is complete and has a token:** only call changes, then merge and store the new token.
+4. **HTTP 410 on changes:** the token has expired. Do one full resync, then call changes again with the new token. There is no retry loop. If the full load fails after a 410, the error is shown and the old snapshot stays in the cache.
+5. **Pull to refresh while still paging:** refresh accounts only and don't wait for or cancel the background load, so the spinner doesn't hang. Once history is complete, pull to refresh uses the changes feed.
 
-`readyMonths` rule (newest-first): while paging, a month is ready once a strictly older IST month appears. When `historyComplete` is true, **every** IST month present in the items is ready. Totals and rows for a month are shown only when that month is ready — otherwise the existing summary/list loaders stay up.
+**When is a month "ready"?** While paging, a month is ready once an older IST month has appeared. Once `historyComplete` is true, every month in the list is ready. Totals and rows for a month are shown only when it is ready, otherwise the loader stays.
 
-Merge rules in `applyTransactionChanges`: a change applies only when `updated_at` is strictly newer than the stored row; newer `deleted: true` removes the id; new ids insert newest-first by occurred time.
+**Merge rules** (`applyTransactionChanges`): a change is applied only if its `updated_at` is newer than the stored row. A newer `deleted: true` removes the row. New ids are inserted newest first.
 
-## Normalization and IST
+## Data shapes and IST
 
-[`normalize-transaction.ts`](../src/features/transactions/utils/normalize-transaction.ts) accepts:
+`utils/normalize-transaction.ts` accepts two shapes:
 
-- **Canonical** rows (`occurred_at`, `amount_minor`, …)
-- **Legacy** rows (`txn_time`, major-unit `amount` string, …)
+- Canonical: `occurred_at`, `amount_minor`, and so on.
+- Legacy: `txn_time` and a string `amount` in major units.
 
-Invalid rows become normalization failures (id + reason) and stay out of totals / list rows.
+Rows that can't be parsed become normalization failures (id and reason) and are kept out of totals and the list.
 
-IST calendar handling lives in [`month-totals.ts`](../src/features/transactions/utils/month-totals.ts):
+IST handling is in `utils/month-totals.ts`. It adds a +5:30 offset (`IST_OFFSET_MS`) to UTC times. `indiaMonthKey` and `indiaDateParts` are used for month chips, list dates and detail timestamps (through `utils/track-month.ts`).
 
-- Offset **+5:30** (`IST_OFFSET_MS`) applied to UTC timestamps
-- `indiaMonthKey` / `indiaDateParts` drive month chips, list dates, and detail timestamps via [`track-month.ts`](../src/features/transactions/utils/track-month.ts)
+## Transfers between own accounts
 
-## Self-transfer / own-account exclusion
+`isOwnAccountTransfer` in `month-totals.ts` returns true when `counterparty.type === 'OWN_ACCOUNT'` or the legacy `linkedAccountLast4` is set.
 
-`isOwnAccountTransfer` in `month-totals.ts`:
+These rows stay in the list and the detail sheet (with a note), but are left out of income and spend in `sumMonthMinor` and `formatMonthTotals`.
 
-- `counterparty.type === 'OWN_ACCOUNT'`, or
-- legacy `linkedAccountLast4` present
+## Money
 
-Those rows still appear in the list and detail sheet (with a self-transfer note). They are **excluded** from income and spend in `sumMonthMinor` / `formatMonthTotals`.
+- Amounts are integer minor units everywhere. No float totals.
+- `formatMinorDecimal` and `formatTransactionAmount` (`utils/format-amount.ts` and `month-totals.ts`) split amounts using integer maths and keep a leading `-` for negatives (`-105` becomes `-1.05`).
+- INR or no currency: Indian grouping with `₹`. USD: `$`, plus an optional `₹` amount from `inrAmountMinor`. Other currencies: the code plus normal grouping.
+- Month cards and amount sorting use the same rule (`rupeeMinor` in `utils/track-list.ts`): for INR or no currency use `amountMinor`, otherwise use `inrAmountMinor` if it exists.
 
-## Integer minor-unit money
+## API client
 
-- API and normalized model keep amounts as **integer minor units** (no float totals).
-- `formatMinorDecimal` / `formatTransactionAmount` in [`format-amount.ts`](../src/features/transactions/utils/format-amount.ts) and `month-totals.ts` split with integer arithmetic and preserve a leading `-` for negatives (for example `-105` → `-1.05`).
-- INR / null currency: primary uses Indian grouping with `₹`. USD uses `$` plus optional `₹` secondary from `inrAmountMinor`. Other codes show `CODE` + western grouping.
-- Month cards and amount sort use the same rupee rule: INR/null → `amountMinor`; otherwise `inrAmountMinor` when present ([`track-list.ts`](../src/features/transactions/utils/track-list.ts) `rupeeMinor`).
+`src/lib/api/client.ts`
 
-### API client
+- Axios, with `baseURL` from `EXPO_PUBLIC_API_URL` and a 15s timeout.
+- All Track GET calls go through `apiGet`, which runs one request at a time.
+- Retries happen only for 429, 500 and 503, up to 4 attempts. The wait is `2000 * 2^attempt` ms (2s, 4s, 8s), or longer if `Retry-After` says so.
+- Network errors and other statuses, including 410, are not retried here.
 
-[`src/lib/api/client.ts`](../src/lib/api/client.ts):
+## TanStack Query
 
-- Axios instance, `baseURL` from `EXPO_PUBLIC_API_URL`, 15s timeout
-- All Track GETs go through `apiGet` → **one-at-a-time queue** (`enqueue`)
-- Retries only for status **429 / 500 / 503**, up to `API_RETRY_ATTEMPTS` (4 attempts). Delays: `2000 * 2^attempt` ms (2s, 4s, 8s…), or longer if `Retry-After` asks for more
-- Network errors and other statuses (including **410**) are not retried by the client
+`src/lib/query/query-client.ts` and `src/app/_layout.tsx`
 
-### TanStack Query
+- `staleTime` is 60s. `gcTime` and the persist `maxAge` are 24 hours (`QUERY_PERSIST_MAX_AGE_MS`).
+- `retry: false` in Query, since retries are already handled in `apiGet`.
+- `PersistQueryClientProvider` with an MMKV persister.
+- If persisting fails, it logs the error and calls `queryPersister.removeClient()` so a broken cache can't block a fresh fetch.
 
-[`src/lib/query/query-client.ts`](../src/lib/query/query-client.ts) and [`src/app/_layout.tsx`](../src/app/_layout.tsx):
+`useTransactions` passes the cached snapshot to `loadTransactionSnapshot`, with an `onProgress` callback that calls `setQueryData` for partial snapshots. Once `historyComplete` is true and a `syncToken` exists, refreshes use the changes feed.
 
-- Default `staleTime` 60s, `gcTime` / persist `maxAge` **24 hours** (`QUERY_PERSIST_MAX_AGE_MS`)
-- `retry: false` at the Query layer (HTTP retries stay in `apiGet`)
-- `PersistQueryClientProvider` with MMKV sync persister
-- Persist `onError`: log, then `queryPersister.removeClient()` so a corrupt cache does not block a fresh fetch
+## From data to screen
 
-`useTransactions` passes the cached snapshot into `loadTransactionSnapshot` with an `onProgress` callback that `setQueryData`s partial snapshots so the latest ready month appears while older months keep downloading. Once `historyComplete` and a `syncToken` exist, refreshes prefer the changes feed.
+`hooks/use-track-data.ts` combines `useAccounts` and `useTransactions`, normalizes the data, builds the month view and applies the filters.
 
-### `useTrackData` → UI
+- If the selected month isn't ready (and history isn't complete), the summary and list show the loading state and hide partial numbers.
+- Months that are ready don't show the refresh spinner while background paging continues. `isRefetching` is ignored until `historyComplete`, unless the user pulled to refresh.
+- Month, category, direction and sort changes apply immediately. Only search text is debounced (200 ms, `LIST_UPDATE_DELAY_MS`). Every effect path returns the same `clearDebounce` cleanup, so an old timer can't overwrite a newer filter.
 
-[`use-track-data.ts`](../src/features/transactions/hooks/use-track-data.ts) composes `useAccounts` + `useTransactions`, normalizes, builds the month view, and applies list criteria. If the selected month is not in `readyMonths` (and history is not complete), summary and list use the existing **loading** status and hide partial totals/rows for that month. Switching into a not-yet-ready month keeps that loader up until background paging marks the month ready. Ready months do **not** show the list refresh spinner while background paging continues (`isRefetching` is ignored until `historyComplete`, unless the user pulled to refresh).
+`components/track-screen.tsx` brings together the month selector, summary cards, filters, list and detail sheet.
 
-[`track-screen.tsx`](../src/features/transactions/components/track-screen.tsx) wires month selector, summary cards, filters, list, and detail sheet.
-
-`useMonthlySummary` / `summary.api.ts` remain in the codebase and are tested, but **Track cards do not call them**; they use IST totals from ready months in the synced set.
-
-## `useTrackData` list updates
-
-- Month, category, direction, and sort changes apply **immediately** (pending search debounce cleared first).
-- Search text alone is debounced **200 ms** (`LIST_UPDATE_DELAY_MS`).
-- Every effect path returns the same `clearDebounce` cleanup so a pending timer cannot overwrite a newer instant filter after unmount or after a non-query change.
+`useMonthlySummary` and `summary.api.ts` are still in the code and tested, but the Track cards don't use them. They show IST totals from ready months in the synced data.
 
 ## List performance
 
-[`transaction-list.tsx`](../src/features/transactions/components/transaction-list.tsx):
+`components/transaction-list.tsx`
 
-- `TransactionRow` wrapped in `memo`
-- Module-level stable `keyExtractor` (by `id`)
-- `renderItem` via `useCallback`
-- FlatList: `initialNumToRender={15}`, `maxToRenderPerBatch={10}`, `windowSize={11}`, `removeClippedSubviews` enabled off-web
-- **No `getItemLayout`**: row height varies (merchant wrap, optional secondary amount / status), so fixed offsets would be wrong
+- `TransactionRow` is wrapped in `memo`.
+- `keyExtractor` is defined once outside the component and uses `id`.
+- `renderItem` uses `useCallback`.
+- FlatList settings: `initialNumToRender={15}`, `maxToRenderPerBatch={10}`, `windowSize={11}`, and `removeClippedSubviews` everywhere except web.
+- No `getItemLayout`, because row height changes (long merchant names, optional second amount, status), so fixed offsets would be wrong.
 
-Shared sheets use [`bottom-sheet.tsx`](../src/features/transactions/components/bottom-sheet.tsx): Modal slide, title / selection / header beside an **×** close control, backdrop dismiss, scroll overflow hint. There is no drag-to-close gesture.
+The shared bottom sheet (`components/bottom-sheet.tsx`) is a Modal with a slide animation, a title next to an × button, tap-outside to close, and a scroll hint for overflow. There is no drag to close.

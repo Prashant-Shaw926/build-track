@@ -111,6 +111,7 @@ Then open the already-installed development build (not Expo Go).
 
 ## More docs
 
+- [Docs index](docs/README.md) — five-minute run + decision log, data notes, PR review, AI disclosure, unfinished
 - [Architecture](docs/ARCHITECTURE.md) — sync, money, filters, data flow
 - [Testing](docs/TESTING.md) — commands, coverage scope, conventions, device checklist
 
