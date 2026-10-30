@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { BottomSheet } from '@/features/transactions/components/bottom-sheet';
-import { formatMonthLabel } from '@/features/transactions/utils/track-month';
+import { formatMonthLabel, parseMonthKey } from '@/features/transactions/utils/track-month';
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing } from '@/constants/theme';
 
@@ -66,10 +66,14 @@ export function MonthSelector({
         visible={open}>
         {months.map((month) => {
           const selected = month === selectedMonth;
+          const parsed = parseMonthKey(month);
+          const label = formatMonthLabel(month);
+          const textType = selected ? 'smallBold' : 'small';
 
           return (
             <Pressable
               key={month}
+              accessibilityLabel={label}
               accessibilityRole="button"
               accessibilityState={{ selected }}
               onPress={() => {
@@ -77,7 +81,18 @@ export function MonthSelector({
                 onClose();
               }}
               style={[styles.month, { backgroundColor: selected ? theme.backgroundActive : theme.backgroundElement }]}>
-              <ThemedText type={selected ? 'smallBold' : 'small'}>{formatMonthLabel(month)}</ThemedText>
+              <View style={styles.monthLabel}>
+                {parsed === null ? (
+                  <ThemedText type={textType}>{label}</ThemedText>
+                ) : (
+                  <>
+                    <ThemedText type={textType}>{parsed.name}</ThemedText>
+                    <ThemedText style={styles.monthYear} type={textType}>
+                      {parsed.year}
+                    </ThemedText>
+                  </>
+                )}
+              </View>
               {selected ? <ThemedText type="smallBold">✓</ThemedText> : null}
             </Pressable>
           );
@@ -114,9 +129,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: Spacing.two,
     flexDirection: 'row',
+    gap: Spacing.two,
     justifyContent: 'space-between',
     minHeight: 44,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
+  },
+  monthLabel: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    flexShrink: 1,
+    flexWrap: 'nowrap',
+    gap: Spacing.one,
+    minWidth: 0,
+  },
+  monthYear: {
+    flexShrink: 0,
   },
 });

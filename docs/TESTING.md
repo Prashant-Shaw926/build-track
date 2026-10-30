@@ -92,4 +92,5 @@ Hook and component tests run in the suite but are **outside** the coverage colle
 3. Open the real month, category (Filters), and sort sheets: select an option, dismiss with the **×** close control or the backdrop (there is no drag-to-close).
 4. Open a row’s detail sheet: account nickname is correct; own-account transfers show the self-transfer note.
 5. Pull to refresh; force an error state (for example stop the mock API); use Retry and confirm recovery when the API is back.
-6. Cold start: latest month appears before the full history finishes; switching to an older month that is still loading shows the existing loader until that month is ready.
+6. Cold start: latest month appears before the full history finishes; switching to an older month that is still loading shows the existing loader until that month is ready. After paging finishes, every month (including the oldest) must show data — not stay on Loading summary/transactions.
+7. While older months are still paging, pull to refresh should clear the list spinner quickly (accounts refresh); it must not sit spinning for the rest of the history download.

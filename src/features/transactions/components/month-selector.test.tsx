@@ -58,9 +58,33 @@ describe('MonthSelector', () => {
 
     expect(screen.getByText('Months')).toBeTruthy();
     expect(screen.getByText('Selected: Oct 2026')).toBeTruthy();
-    fireEvent.press(screen.getByText('Aug 2026'));
+    fireEvent.press(screen.getByLabelText('Aug 2026'));
     expect(handleSelect).toHaveBeenCalledWith('2026-08');
     expect(handleClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('always shows the year next to Jan, Jul, and Aug in the sheet', async () => {
+    await render(
+      <MonthSelector
+        months={['2026-01', '2026-07', '2026-08', '2026-09']}
+        selectedMonth="2026-09"
+        monthLabel="Sep 2026"
+        open={true}
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+        onSelect={jest.fn()}
+        onPrevious={jest.fn()}
+        onNext={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('Jan 2026')).toBeTruthy();
+    expect(screen.getByLabelText('Jul 2026')).toBeTruthy();
+    expect(screen.getByLabelText('Aug 2026')).toBeTruthy();
+    expect(screen.getByText('Jan')).toBeTruthy();
+    expect(screen.getByText('Jul')).toBeTruthy();
+    expect(screen.getByText('Aug')).toBeTruthy();
+    expect(screen.getAllByText('2026').length).toBeGreaterThanOrEqual(3);
   });
 
   it('closes the months sheet from the close button', async () => {

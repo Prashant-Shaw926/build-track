@@ -290,6 +290,28 @@ export function useTrackData() {
     },
     refresh: () => {
       setPullRefreshing(true);
+
+      // History still paging: do not await (or cancel/restart) the long progressive fetch —
+      // refresh accounts, keep background paging, and clear the pull spinner promptly.
+      if (snapshot === null || !snapshot.historyComplete) {
+        void accountsQuery.refetch().then((result) => {
+          if (result.isError) {
+            setNotice(apiErrorMessage(result.error, 'refresh'));
+            return;
+          }
+
+          setNotice(null);
+        });
+
+        if (!transactionsQuery.isFetching) {
+          void transactionsQuery.refetch();
+        }
+
+        setPullRefreshing(false);
+        return;
+      }
+
+      // Complete history: changes-feed refresh is short; prioritize that path.
       void Promise.all([accountsQuery.refetch(), transactionsQuery.refetch()])
         .then((refetched) => {
           const failed = refetched.find((result) => result.isError);

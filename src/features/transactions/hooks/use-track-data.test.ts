@@ -450,4 +450,75 @@ describe('useTrackData - progressive month readiness', () => {
     expect(result.current.view.income).toBeNull();
     expect(result.current.view.spend).toBeNull();
   });
+
+  it('clears pull-to-refresh immediately while progressive history is still loading', async () => {
+    const mockRefetchAccounts = jest.fn().mockResolvedValue({ isError: false });
+    const mockRefetchTransactions = jest.fn().mockResolvedValue({ isError: false });
+    mockUseAccounts.mockReturnValue({
+      data: { items: sampleAccounts },
+      isPending: false,
+      isError: false,
+      isRefetching: false,
+      refetch: mockRefetchAccounts,
+    });
+    mockUseTransactions.mockReturnValue({
+      data: {
+        items: sampleTransactions,
+        syncToken: null,
+        changesSynced: false,
+        changesErrorMessage: null,
+        historyComplete: false,
+        resumeCursor: 'cursor-next',
+        readyMonths: ['2026-10'],
+      },
+      isPending: false,
+      isError: false,
+      isFetching: true,
+      isRefetching: true,
+      dataUpdatedAt: Date.now(),
+      refetch: mockRefetchTransactions,
+    });
+
+    const { result } = await renderHook(() => useTrackData());
+
+    await act(async () => {
+      result.current.refresh();
+    });
+
+    expect(result.current.refreshing).toBe(false);
+    expect(mockRefetchAccounts).toHaveBeenCalledTimes(1);
+    // Already fetching progressive pages — do not cancel/restart with another refetch.
+    expect(mockRefetchTransactions).not.toHaveBeenCalled();
+  });
+
+  it('shows every month once historyComplete even if readyMonths was still partial', async () => {
+    mockUseTransactions.mockReturnValue({
+      data: {
+        items: sampleTransactions,
+        syncToken: 'st_123',
+        changesSynced: true,
+        changesErrorMessage: null,
+        historyComplete: true,
+        resumeCursor: null,
+        // Stale partial list from before finalize — migrate/read must not leave Sep stuck.
+        readyMonths: ['2026-10'],
+      },
+      isPending: false,
+      isError: false,
+      isFetching: false,
+      isRefetching: false,
+      dataUpdatedAt: Date.now(),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
+    });
+
+    const { result } = await renderHook(() => useTrackData());
+
+    await act(async () => {
+      result.current.selectMonth('2026-09');
+    });
+
+    expect(result.current.summaryStatus).toBe('ready');
+    expect(result.current.transactionsStatus).toBe('ready');
+    expect(result.current.view.transactions.length).toBeGreaterThan(0);
+  });
 });

@@ -167,8 +167,19 @@ async function fetchTransactionsProgressive(
       items: previous !== null && !previous.historyComplete ? previous.items : [],
       cursor: previous !== null && !previous.historyComplete ? previous.resumeCursor : null,
     },
-    ({ items, nextCursor, historyComplete }) => {
+    ({ items, nextCursor, historyComplete, listSyncToken }) => {
       if (historyComplete) {
+        // Unlock every month as soon as paging finishes, even if changes are cancelled later.
+        onProgress?.(
+          buildSnapshot({
+            items,
+            syncToken: listSyncToken,
+            changesSynced: false,
+            changesErrorMessage: null,
+            historyComplete: true,
+            resumeCursor: null,
+          }),
+        );
         return;
       }
 
@@ -327,9 +338,12 @@ function migrateSnapshot(data: TransactionSnapshot | Omit<TransactionSnapshot, '
     'resumeCursor' in data && (data.resumeCursor === null || typeof data.resumeCursor === 'string')
       ? data.resumeCursor
       : null;
-  const readyMonths = hasReadyMonths(data)
-    ? data.readyMonths
-    : computeReadyMonths(data.items, historyComplete);
+  // Always recompute when history is complete so a stale partial readyMonths list cannot stick.
+  const readyMonths = historyComplete
+    ? computeReadyMonths(data.items, true)
+    : hasReadyMonths(data)
+      ? data.readyMonths
+      : computeReadyMonths(data.items, false);
 
   return {
     items: data.items,

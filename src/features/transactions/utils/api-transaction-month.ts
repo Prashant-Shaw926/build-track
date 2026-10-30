@@ -25,11 +25,32 @@ export function apiTransactionIndiaMonthKey(item: ApiTransaction): string | null
   return indiaMonthKey(occurredAtMs);
 }
 
-/** Newest-first items: a month is ready once a strictly older month appears, or the history is complete. */
+function uniqueMonths(items: readonly ApiTransaction[]): string[] {
+  const months = new Set<string>();
+
+  for (const item of items) {
+    const month = apiTransactionIndiaMonthKey(item);
+
+    if (month !== null) {
+      months.add(month);
+    }
+  }
+
+  return [...months].sort();
+}
+
+/**
+ * Newest-first items: a month is ready once a strictly older month appears.
+ * When history is complete, every month present in the list is ready (full set).
+ */
 export function computeReadyMonths(
   items: readonly ApiTransaction[],
   historyComplete: boolean,
 ): string[] {
+  if (historyComplete) {
+    return uniqueMonths(items);
+  }
+
   const ready: string[] = [];
   let current: string | null = null;
 
@@ -52,10 +73,6 @@ export function computeReadyMonths(
 
       current = month;
     }
-  }
-
-  if (historyComplete && current !== null && !ready.includes(current)) {
-    ready.push(current);
   }
 
   return ready.sort();

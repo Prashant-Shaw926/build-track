@@ -1,6 +1,11 @@
 import type { NormalizedTransaction } from '@/features/transactions/types/normalized-transaction.types';
 import type { NormalizationResult } from '@/features/transactions/types/normalized-transaction.types';
-import { buildTrackMonth, formatTransactionTimestamp } from '@/features/transactions/utils/track-month';
+import {
+  buildTrackMonth,
+  formatMonthLabel,
+  formatTransactionTimestamp,
+  parseMonthKey,
+} from '@/features/transactions/utils/track-month';
 
 function transaction(id: string, occurredAt: string, amountMinor = 100): NormalizedTransaction {
   return {
@@ -23,6 +28,31 @@ function transaction(id: string, occurredAt: string, amountMinor = 100): Normali
     linkedAccountLast4: null,
   };
 }
+
+describe('month labels', () => {
+  it('keeps the year for every calendar month including Jan, Jul, and Aug', () => {
+    const keys = [
+      '2025-01',
+      '2025-07',
+      '2025-08',
+      '2026-01',
+      '2026-07',
+      '2026-08',
+      '2026-10',
+    ];
+
+    expect(keys.map(formatMonthLabel)).toEqual([
+      'Jan 2025',
+      'Jul 2025',
+      'Aug 2025',
+      'Jan 2026',
+      'Jul 2026',
+      'Aug 2026',
+      'Oct 2026',
+    ]);
+    expect(parseMonthKey('2026-07')).toEqual({ name: 'Jul', year: '2026' });
+  });
+});
 
 describe('track month view', () => {
   const results: NormalizationResult[] = [

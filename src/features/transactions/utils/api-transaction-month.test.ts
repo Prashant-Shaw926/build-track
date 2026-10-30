@@ -56,6 +56,16 @@ describe('api transaction month helpers', () => {
     expect(computeReadyMonths(items, true)).toEqual(['2026-10']);
   });
 
+  it('marks every month ready when history is complete even if items are not strictly newest-first', () => {
+    const items = [
+      txn('jan', '2026-01-15T10:00:00Z'),
+      txn('oct', '2026-10-10T10:00:00Z'),
+      txn('dec', '2025-12-20T10:00:00Z'),
+    ];
+
+    expect(computeReadyMonths(items, true)).toEqual(['2025-12', '2026-01', '2026-10']);
+  });
+
   it('checks month readiness against the ready list', () => {
     expect(isMonthReady(['2026-10'], '2026-10')).toBe(true);
     expect(isMonthReady(['2026-10'], '2026-09')).toBe(false);

@@ -63,16 +63,30 @@ function isMonthKey(value: string): boolean {
   return month >= 1 && month <= 12;
 }
 
-export function formatMonthLabel(month: string): string {
-  const match = MONTH_KEY.exec(month);
+export function parseMonthKey(month: string): { year: string; name: string } | null {
+  const match = MONTH_KEY.exec(month.trim());
 
   if (match === null) {
-    return month;
+    return null;
   }
 
   const name = MONTH_NAMES[Number(match[2]) - 1];
 
-  return name === undefined ? month : `${name} ${match[1]}`;
+  if (name === undefined) {
+    return null;
+  }
+
+  return { year: match[1], name };
+}
+
+export function formatMonthLabel(month: string): string {
+  const parsed = parseMonthKey(month);
+
+  if (parsed === null) {
+    return month;
+  }
+
+  return `${parsed.name} ${parsed.year}`;
 }
 
 function formatTransactionDate(occurredAt: string): string {
